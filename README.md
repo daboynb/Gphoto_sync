@@ -1,71 +1,126 @@
-Inspired by / based on https://github.com/JakeWharton/docker-gphotos-sync (thanks Jake!)
+# Google Photos Sync
 
-Example docker compose definition:
+Automatically download all your photos from Google Photos.
+
+## Quick Start
+
+### 1. First Time Setup (Authentication)
+
+Clone this repository and run the authentication script:
+
+```bash
+git clone <this-repo>
+cd Gphoto_sync
+./doauth.sh
+```
+
+This will:
+- Open a VNC window at `http://localhost:6080`
+- Let you login to your Google account
+- Save your login session in the `./profile` folder
+
+### 2. Test It Works
+
+Run a test sync to make sure everything is working:
+
+```bash
+./testsync.sh
+```
+
+Your photos will be downloaded to the `./photos` folder.
+
+### 3. Setup Automatic Sync (Optional)
+
+Use Docker Compose to run syncs automatically on a schedule:
 
 ```yaml
 services:
   gphotos-sync:
     build:
-      context: https://github.com/spraot/gphotos-sync.git
-      # I recommend using a specific commit instead though:
-      # context: https://github.com/spraot/gphotos-sync.git#{FULL_GIT_HASH}
-      # Optionally override the version of gphotos-cdp to use (requires rebuilding the docker image):
-      # args:
-      #   - GPHOTOS_CDP_VERSION=github.com/spraot/gphotos-cdp@COMMITISH
+      context: .
     container_name: gphotos-sync
     restart: unless-stopped
-    privileged: true # chrome seems to need this to run as 1000:1000
+    privileged: true
     volumes:
       - ./profile:/tmp/gphotos-cdp
       - ./photos:/download
     environment:
-      - PUID=1000  # Set to the current user's uid
-      - PGID=1000  # Set to the current user's gid
-      - CRON_SCHEDULE=27 * * * *
-      - RESTART_SCHEDULE=26 1 * * 0
-      - HEALTHCHECK_ID=d6e4a333-ce52-4129-9d3e-6722c3333333
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 2 * * *  # Run every day at 2 AM
       - LOGLEVEL=info
       - TZ=Europe/Berlin
-      - ALBUMS=  # comma separated list of album IDs to sync
-      - GPHOTOS_CDP_ARGS=  # additional arguments to pass to gphotos-cdp
 ```
 
-## Initial authentication
+---
 
-Clone this repo and use ./doauth.sh to create an authenticated profile dir. Follow the instructions in the terminal to complete authentication. It will create a profile directory at ./profile or whatever the PROFILE_DIR env var is set to.
+## Configuration Options
 
-Run ./test.sh to test that it works. You can let ./test.sh complete for your initial sync. 
+### Schedule Settings
 
-These scripts must be run with the same user as PUID/PGID is set for in docker-compose.yml.
+- **CRON_SCHEDULE**: When to run the sync (default: `0 2 * * *` = daily at 2 AM)
+  - `0 * * * *` = every hour
+  - `0 */6 * * *` = every 6 hours
+  - `0 0 * * 0` = every Sunday at midnight
 
-## Notes 
+### Download Specific Albums
 
-Files deleted on Google Photos after being downloaded will not be deleted locally, but a list of such files will be saved to `.removed`.
+To download only specific albums instead of your entire library:
 
-Each synced item will be downloaded to its own subfolder in your download directory. This folder may contain multiple items in case of live photos, edited photos, etc. If you delete this folder or its contents, it will be downloaded again at the next run.
+1. Open the album in your browser
+2. Copy the album ID from the URL: `https://photos.google.com/album/{ALBUM_ID}`
+3. Set the environment variable:
 
-## Downloading an album
-
-Set ALBUMS to a comma seperated list of album IDs, where the album URL is:
-
+```yaml
+environment:
+  - ALBUMS=album1_id,album2_id,album3_id
 ```
-https://photos.google.com/album/{ALBUM_ID}
+
+To sync both albums AND your entire library, add `ALL` to the list:
+```yaml
+  - ALBUMS=ALL,album1_id,album2_id
 ```
 
-You can provide just the album ID for normal albums, or the whole relative path in case of other types of albums (e.g. `shared/<SHARED_ALBUM_ID>`). To sync albums and the entire library, add "ALL" to the list of albums.
+### Other Options
 
-## Legacy mode
+- **PUID/PGID**: User/group ID for file permissions (run `id -u` and `id -g` to find yours)
+- **LOGLEVEL**: `debug`, `info`, `warn`, or `error`
+- **WORKER_COUNT**: Number of parallel downloads (default: 6)
 
-Setting `GPHOTOS_CDP_ARGS=-legacy` will cause the sync to run in "legacy" mode. This mode is *much* slower at scanning through your entire library, but is much faster at doing the initial synchronization (where all files need to be downloaded). Thus using -legacy for the initial synchronization can be helpful. Switching between regular and legacy mode can be done at any time.
+---
 
-In legacy mode, syncs always start where the last run ended, so if we want to check for new files that have a 'date taken' older than that file, you will need to delete the `.lastdone` file. RESTART_SCHEDULE automates this by deleting .lastdone file on the cron schedule givenso that the next sync will start from the beginning (skipping already downloaded files).
+## How It Works
 
-Note: if using -legacy mode and ALBUMS, the albums must be sorted newest first, otherwise files added after the initial sync will not be downloaded.
+1. **First Run**: Downloads all your photos to `./photos`
+2. **Next Runs**: Only downloads new photos (skips existing ones)
+3. **Deleted Photos**: If you delete a photo from Google Photos, it won't be deleted locally. Instead, it's added to a `.removed` file.
+4. **File Structure**: Each photo gets its own folder (useful for Live Photos and edited versions)
 
-## Regarding language
+---
 
-It may be necessary to set your account language to "English (United States)" for this to work (see [#2](https://github.com/spraot/gphotos-sync/issues/2)). This is the likely cause if you see date parsing errors or similar. Help localizing [gphotos-cdp](https://github.com/spraot/gphotos-cdp/issues/2) is welcome.
+## Tips & Tricks
 
-## Issues caused by highlight videos
+### Fast Initial Sync (Legacy Mode)
 
-Google Photos has a feature that automatically generates highlight videos. If you save these to your account, they can cause issues with syncing. Generally they cannot be downloaded or viewed from the browser and they occasionally cause the Google Photos UI (and therefore this sync service) to freeze. I suggest deleting these from your account and restarting the sync service. If you still see issues check that your .lastdone file does not contain the URL to a highlight video.
+If you have thousands of photos, the first sync can take a while. Use "legacy mode" to speed it up:
+
+```yaml
+environment:
+  - GPHOTOS_CDP_ARGS=-legacy
+```
+
+**Note**: Legacy mode is slower for checking updates, so switch back to normal mode after the initial sync is complete.
+
+### Avoid Highlight Videos
+
+Google Photos creates automatic highlight videos. These can cause sync issues because they're often undownloadable. If you experience freezes:
+
+1. Delete highlight videos from your Google Photos account
+2. Check the `.lastdone` file doesn't contain a highlight video URL
+
+## Credits
+
+This is a fork of those projects:
+https://github.com/spraot/gphotos-sync
+https://github.com/JakeWharton/docker-gphotos-sync
+https://github.com/perkeep/gphotos-cdp
