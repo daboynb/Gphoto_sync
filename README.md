@@ -111,16 +111,35 @@ environment:
 
 **Note**: Legacy mode is slower for checking updates, so switch back to normal mode after the initial sync is complete.
 
-### Avoid Highlight Videos
+## Credits & License
 
-Google Photos creates automatic highlight videos. These can cause sync issues because they're often undownloadable. If you experience freezes:
+This project is a derivative work based on the following open-source projects:
 
-1. Delete highlight videos from your Google Photos account
-2. Check the `.lastdone` file doesn't contain a highlight video URL
+### Based On
 
-## Credits
+**[spraot/gphotos-sync](https://github.com/spraot/gphotos-sync)**
+- Primary inspiration and base architecture
+- No explicit license found in repository
 
-This is a fork of those projects:
-https://github.com/spraot/gphotos-sync
-https://github.com/JakeWharton/docker-gphotos-sync
-https://github.com/perkeep/gphotos-cdp
+**[JakeWharton/docker-gphotos-sync](https://github.com/JakeWharton/docker-gphotos-sync)**
+- Docker containerization approach
+- Licensed under MIT License
+- Copyright © 2020 Jake Wharton
+
+**[perkeep/gphotos-cdp](https://github.com/perkeep/gphotos-cdp)**
+- Core sync engine using Chrome DevTools Protocol
+- Licensed under Apache License 2.0
+- Copyright © 2019 The Perkeep Authors
+
+### License
+
+This project incorporates code from projects under different licenses:
+
+- **Apache License 2.0** components from `perkeep/gphotos-cdp`
+- **MIT License** components from `JakeWharton/docker-gphotos-sync`
+
+As required by both licenses, all original copyright notices and license texts are preserved in their respective files.
+
+**This derivative work is provided "AS IS" without warranty of any kind.**
+
+---

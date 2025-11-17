@@ -1,0 +1,123 @@
+# License Information
+
+This project is a derivative work that incorporates code from multiple open-source projects with different licenses.
+
+---
+
+## Apache License 2.0 Components
+
+Parts of this project are derived from **perkeep/gphotos-cdp**:
+- Copyright © 2019 The Perkeep Authors
+- Licensed under Apache License 2.0
+
+```
+Copyright 2019 The Perkeep Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+Full Apache License 2.0 text: https://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+## MIT License Components
+
+Parts of this project are derived from **JakeWharton/docker-gphotos-sync**:
+- Copyright © 2020 Jake Wharton
+- Licensed under MIT License
+
+```
+MIT License
+
+Copyright (c) 2020 Jake Wharton
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## Derivative Work License
+
+Modifications and additions made in this project (Gphoto_sync) are provided under the **Apache License 2.0** to maintain compatibility with the primary dependency (gphotos-cdp).
+
+```
+Copyright 2025 Gphoto_sync Contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+---
+
+## Third-Party Dependencies
+
+This project uses the following third-party software:
+
+- **chromedp** - MIT License (https://github.com/chromedp/chromedp)
+- **zerolog** - MIT License (https://github.com/rs/zerolog)
+- **Go standard library** - BSD-3-Clause License (https://golang.org/LICENSE)
+- **jq** - MIT License (https://github.com/jqlang/jq)
+- **exiftool** - Perl Artistic License or GPL (https://exiftool.org/)
+- **Docker** - Apache License 2.0 (https://www.docker.com/)
+
+For complete license texts of dependencies, please refer to their respective repositories.
+
+---
+
+## Disclaimer
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+This software interacts with Google Photos, a proprietary service. Use of this
+software is subject to Google's Terms of Service and does not imply any
+endorsement or affiliation with Google LLC.
+
+---
+
+## Attribution Requirements
+
+When using this software, you must:
+
+1. Preserve all copyright notices from original projects
+2. Include copies of the Apache License 2.0 and MIT License
+3. State any significant modifications made to the original code
+4. Provide attribution to all original authors
+
+See individual files for specific copyright notices.
