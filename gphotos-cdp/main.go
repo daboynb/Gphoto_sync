@@ -186,8 +186,7 @@ func main() {
 		log.Fatal().Msgf("failed to get locale: %v", err)
 	}
 
-	// Check if Google Translate is active
-	s.checkTranslateStatus(startupCtx)
+	s.checkLanguage(startupCtx)
 
 	initLocales()
 	_loc, exists := locales[locale]
@@ -209,8 +208,7 @@ func main() {
 		log.Fatal().Msgf("failed to run first nav: %v", err)
 	}
 
-	// Check Google Translate status after first navigation
-	s.checkTranslateStatus(startupCtx)
+	s.checkLanguage(startupCtx)
 	log.Info().Msg("first navigation completed")
 	startupCancel()
 
@@ -607,76 +605,36 @@ func (s *Session) getLocale(ctx context.Context) (string, error) {
 	return locale, nil
 }
 
-func (s *Session) checkTranslateStatus(ctx context.Context) {
-	var translateInfo string
+func (s *Session) checkLanguage(ctx context.Context) {
+	var htmlLang string
+	var browserLangs string
 
+	// Get page language
 	err := chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`
-			(function() {
-				const htmlLang = document.documentElement.lang;
-				const htmlTranslated = document.documentElement.getAttribute('class');
-				const translateFrame = document.querySelector('iframe.goog-te-banner-frame');
-				const translateWidget = document.querySelector('.goog-te-gadget');
-
-				// Check Chrome's accepted languages
-				const acceptLanguages = navigator.languages || [navigator.language];
-
-				// Check for any translate-related attributes or classes
-				const hasTranslateAttr = document.documentElement.hasAttribute('translated') ||
-				                         document.documentElement.hasAttribute('data-google-translate-lang');
-
-				let info = {
-					htmlLang: htmlLang,
-					htmlClass: htmlTranslated,
-					hasTranslateFrame: !!translateFrame,
-					hasTranslateWidget: !!translateWidget,
-					hasTranslateAttr: hasTranslateAttr,
-					isTranslated: (htmlTranslated && htmlTranslated.includes('translated')) || hasTranslateAttr,
-					browserLangs: acceptLanguages.join(',')
-				};
-
-				return JSON.stringify(info);
-			})()
-		`, &translateInfo),
+		chromedp.Evaluate(`document.documentElement.lang || "unknown"`, &htmlLang),
 	)
-
 	if err != nil {
-		log.Debug().Err(err).Msg("failed to check Google Translate status")
+		log.Debug().Err(err).Msg("failed to get page language")
 		return
 	}
 
-	// Extract htmlLang for checking
-	htmlLang := func() string {
-		if idx := strings.Index(translateInfo, `"htmlLang":"`); idx != -1 {
-			start := idx + len(`"htmlLang":"`)
-			if end := strings.Index(translateInfo[start:], `"`); end != -1 {
-				return translateInfo[start : start+end]
-			}
-		}
-		return "unknown"
-	}()
-
-	browserLangs := func() string {
-		if idx := strings.Index(translateInfo, `"browserLangs":"`); idx != -1 {
-			start := idx + len(`"browserLangs":"`)
-			if end := strings.Index(translateInfo[start:], `"`); end != -1 {
-				return translateInfo[start : start+end]
-			}
-		}
-		return "unknown"
-	}()
+	// Get browser language preferences
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`(navigator.languages || [navigator.language]).join(',')`, &browserLangs),
+	)
+	if err != nil {
+		browserLangs = "unknown"
+	}
 
 	// Check if page is in English as expected
 	if htmlLang == "en" || htmlLang == "en-US" {
-		log.Info().Msgf("✓ Page language is English (lang=%s) - Browser languages: %s", htmlLang, browserLangs)
-	} else if htmlLang != "unknown" {
-		log.Warn().Msgf("✗ Page language is NOT English (lang=%s) - Expected 'en'. Browser languages: %s", htmlLang, browserLangs)
-		log.Warn().Msg("This may cause parsing errors. Check Chrome language preferences.")
+		log.Info().Msgf("✓ Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
+	} else if htmlLang != "unknown" && htmlLang != "" {
+		log.Warn().Msgf("✗ Page language: %s (expected 'en') | Browser preferences: %s", htmlLang, browserLangs)
+		log.Warn().Msg("This may cause parsing errors. Check that Chrome language preferences are set to 'en-US,en'")
 	} else {
-		log.Info().Msgf("Language detection - DOM lang: %s | Browser languages: %s", htmlLang, browserLangs)
+		log.Info().Msgf("Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
 	}
-
-	log.Info().Msgf("Translation status: %s", translateInfo)
 }
 
 func captureScreenshot(ctx context.Context, filePath string) {
