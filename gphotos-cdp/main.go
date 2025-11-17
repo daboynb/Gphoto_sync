@@ -167,32 +167,6 @@ func main() {
 	ctx, cancel := s.NewWindow()
 	defer cancel()
 
-	// Start continuous screenshot capture every 0.5 seconds
-	screenshotDir := filepath.Join(s.downloadDir, "video-screenshots")
-	os.MkdirAll(screenshotDir, 0755)
-	stopScreenshots := make(chan bool)
-	go func() {
-		counter := 0
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stopScreenshots:
-				log.Info().Msg("Stopping continuous screenshots")
-				return
-			case <-ticker.C:
-				counter++
-				screenshotPath := filepath.Join(screenshotDir, fmt.Sprintf("frame_%06d", counter))
-				captureScreenshot(ctx, screenshotPath)
-			}
-		}
-	}()
-	defer func() {
-		close(stopScreenshots)
-		log.Info().Msgf("Screenshots saved to: %s", screenshotDir)
-		log.Info().Msg("To create video: ffmpeg -framerate 2 -pattern_type glob -i 'video-screenshots/frame_*.png' -c:v libx264 -pix_fmt yuv420p output.mp4")
-	}()
-
 	startupCtx, startupCancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer startupCancel()
 
