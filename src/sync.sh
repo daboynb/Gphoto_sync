@@ -18,15 +18,11 @@ GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -headless -json -loglevel $LOGLEVEL 
 
 rm -f $PROFILE_DIR/Singleton*
 
-# Force English language in Chrome preferences and auto-translate
+# Force English language in Chrome preferences
 PREFS_FILE="$PROFILE_DIR/Default/Preferences"
 if [ -f "$PREFS_FILE" ]; then
-  info "Forcing English language and auto-translate in Chrome profile"
-  jq '.intl.accept_languages = "en-US,en" |
-      .translate.enabled = true |
-      .translate_site_blacklist = [] |
-      .translate_whitelists = {"it": "en", "es": "en", "fr": "en", "de": "en"} |
-      .translate.auto_translate = true' "$PREFS_FILE" > "$PREFS_FILE.tmp" && mv "$PREFS_FILE.tmp" "$PREFS_FILE"
+  info "Forcing English language in Chrome profile"
+  jq '.intl.accept_languages = "en-US,en"' "$PREFS_FILE" > "$PREFS_FILE.tmp" && mv "$PREFS_FILE.tmp" "$PREFS_FILE"
 fi
 
 if [ -n "$ALBUMS" ]; then
