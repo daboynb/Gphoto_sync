@@ -170,14 +170,24 @@ func main() {
 	startupCtx, startupCancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer startupCancel()
 
+	log.Info().Msg("========================================")
+	log.Info().Msg("AUTHENTICATION")
+	log.Info().Msg("========================================")
 	if err := s.login(startupCtx); err != nil {
 		log.Fatal().Msgf("login failed: %v", err)
 	}
 
+	log.Info().Msg("")
+	log.Info().Msg("========================================")
+	log.Info().Msg("LANGUAGE DETECTION")
+	log.Info().Msg("========================================")
 	locale, err := s.getLocale(startupCtx)
 	if err != nil {
 		log.Fatal().Msgf("failed to get locale: %v", err)
 	}
+
+	// Check if Google Translate is active
+	s.checkTranslateStatus(startupCtx)
 
 	initLocales()
 	_loc, exists := locales[locale]
@@ -189,15 +199,25 @@ func main() {
 		loc = _loc
 	}
 
-	log.Info().Msg("starting first navigation...")
+	log.Info().Msg("")
+	log.Info().Msg("========================================")
+	log.Info().Msg("FIRST NAVIGATION")
+	log.Info().Msg("========================================")
 	if err := chromedp.Run(startupCtx,
 		chromedp.ActionFunc(s.firstNav),
 	); err != nil {
 		log.Fatal().Msgf("failed to run first nav: %v", err)
 	}
+
+	// Check Google Translate status after first navigation
+	s.checkTranslateStatus(startupCtx)
 	log.Info().Msg("first navigation completed")
 	startupCancel()
 
+	log.Info().Msg("")
+	log.Info().Msg("========================================")
+	log.Info().Msg("STARTING SYNC")
+	log.Info().Msg("========================================")
 	if err := chromedp.Run(ctx,
 		chromedp.ActionFunc(s.resync),
 		chromedp.ActionFunc(s.checkForRemovedFiles),
@@ -205,7 +225,10 @@ func main() {
 		log.Fatal().Msgf("failure during sync: %v", err)
 	}
 
-	log.Info().Msg("Done")
+	log.Info().Msg("")
+	log.Info().Msg("========================================")
+	log.Info().Msg("SYNC COMPLETED")
+	log.Info().Msg("========================================")
 }
 
 type PhotoData struct {
@@ -556,11 +579,11 @@ func (s *Session) getLocale(ctx context.Context) (string, error) {
 					// Try to get locale from html lang attribute
 					const htmlLang = document.documentElement.lang;
 					if (htmlLang) return htmlLang;
-					
+
 					// Try to get locale from meta tags
 					const metaLang = document.querySelector('meta[property="og:locale"]');
 					if (metaLang) return metaLang.content;
-					
+
 					// Try to get locale from Google's internal data
 					const scripts = document.getElementsByTagName('script');
 					for (const script of scripts) {
@@ -569,7 +592,7 @@ func (s *Session) getLocale(ctx context.Context) (string, error) {
 							if (match) return match[1];
 						}
 					}
-					
+
 					return "unknown";
 				})()
 			`, &locale),
@@ -580,7 +603,80 @@ func (s *Session) getLocale(ctx context.Context) (string, error) {
 		return "en", nil
 	}
 
+	log.Info().Msgf("detected page locale: %s", locale)
 	return locale, nil
+}
+
+func (s *Session) checkTranslateStatus(ctx context.Context) {
+	var translateInfo string
+
+	err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`
+			(function() {
+				const htmlLang = document.documentElement.lang;
+				const htmlTranslated = document.documentElement.getAttribute('class');
+				const translateFrame = document.querySelector('iframe.goog-te-banner-frame');
+				const translateWidget = document.querySelector('.goog-te-gadget');
+
+				// Check Chrome's accepted languages
+				const acceptLanguages = navigator.languages || [navigator.language];
+
+				// Check for any translate-related attributes or classes
+				const hasTranslateAttr = document.documentElement.hasAttribute('translated') ||
+				                         document.documentElement.hasAttribute('data-google-translate-lang');
+
+				let info = {
+					htmlLang: htmlLang,
+					htmlClass: htmlTranslated,
+					hasTranslateFrame: !!translateFrame,
+					hasTranslateWidget: !!translateWidget,
+					hasTranslateAttr: hasTranslateAttr,
+					isTranslated: (htmlTranslated && htmlTranslated.includes('translated')) || hasTranslateAttr,
+					browserLangs: acceptLanguages.join(',')
+				};
+
+				return JSON.stringify(info);
+			})()
+		`, &translateInfo),
+	)
+
+	if err != nil {
+		log.Debug().Err(err).Msg("failed to check Google Translate status")
+		return
+	}
+
+	// Extract htmlLang for checking
+	htmlLang := func() string {
+		if idx := strings.Index(translateInfo, `"htmlLang":"`); idx != -1 {
+			start := idx + len(`"htmlLang":"`)
+			if end := strings.Index(translateInfo[start:], `"`); end != -1 {
+				return translateInfo[start : start+end]
+			}
+		}
+		return "unknown"
+	}()
+
+	browserLangs := func() string {
+		if idx := strings.Index(translateInfo, `"browserLangs":"`); idx != -1 {
+			start := idx + len(`"browserLangs":"`)
+			if end := strings.Index(translateInfo[start:], `"`); end != -1 {
+				return translateInfo[start : start+end]
+			}
+		}
+		return "unknown"
+	}()
+
+	// Check if page is in English as expected
+	if htmlLang == "en" || htmlLang == "en-US" {
+		log.Info().Msgf("✓ Page language is English (lang=%s) - Browser languages: %s", htmlLang, browserLangs)
+	} else if htmlLang != "unknown" {
+		log.Warn().Msgf("✗ Page language is NOT English (lang=%s) - Expected 'en'. Browser languages: %s", htmlLang, browserLangs)
+		log.Warn().Msg("This may cause parsing errors. Check Chrome language preferences.")
+	} else {
+		log.Info().Msgf("Language detection - DOM lang: %s | Browser languages: %s", htmlLang, browserLangs)
+	}
+
+	log.Info().Msgf("Translation status: %s", translateInfo)
 }
 
 func captureScreenshot(ctx context.Context, filePath string) {
