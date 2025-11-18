@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Photos Sync Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-camera text-blue-500"></i>
+                Google Photos Sync Manager
+            </h1>
+            <div class="flex gap-4 text-sm text-gray-600">
+                <span>Total: <strong id="stat-total">0</strong></span>
+                <span class="text-green-600">Running: <strong id="stat-running">0</strong></span>
+                <span class="text-red-600">Stopped: <strong id="stat-stopped">0</strong></span>
+            </div>
+        </div>
+
+        <!-- Create New Profile Button -->
+        <div class="mb-6">
+            <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                <i class="fas fa-plus-circle"></i> Create New Profile
+            </button>
+        </div>
+
+        <!-- Available Profiles (not started) -->
+        <div id="available-profiles" class="mb-6"></div>
+
+        <!-- Containers List -->
+        <div id="containers-list" class="space-y-4">
+            <!-- Containers will be loaded here -->
+        </div>
+
+        <!-- Create Profile Modal -->
+        <div id="create-profile-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-user-plus text-green-600"></i>
+                        Create New Profile
+                    </h2>
+                    <button onclick="closeCreateProfileModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="mb-4">
+                    <label for="profile-name-input" class="block text-sm font-medium text-gray-700 mb-2">
+                        Profile Name
+                    </label>
+                    <input type="text" id="profile-name-input"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                           placeholder="e.g., Family Photos, Work Account, etc."
+                           maxlength="50">
+                </div>
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4">
+                    <p class="text-sm text-blue-800">
+                        <i class="fas fa-info-circle"></i>
+                        After creating the profile, you'll need to authenticate it using the VNC interface.
+                    </p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="createNewProfile()"
+                            class="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                        <i class="fas fa-check"></i> Create Profile
+                    </button>
+                    <button onclick="closeCreateProfileModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Configuration Modal -->
+        <div id="config-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-cog text-blue-600"></i>
+                        Configure Profile - <span id="config-profile-name"></span>
+                    </h2>
+                    <button onclick="closeConfigModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Cron Schedule -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-clock"></i> Sync Schedule (Cron)
+                        </label>
+                        <input type="text" id="config-cron"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="0 3 * * *" value="0 3 * * *">
+                        <p class="text-xs text-gray-500 mt-1">Cron expression (e.g., "0 3 * * *" = daily at 3 AM)</p>
+                    </div>
+
+                    <!-- Run on Startup -->
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="config-run-on-startup" checked
+                                   class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <span class="text-sm font-medium text-gray-700">
+                                <i class="fas fa-rocket"></i> Run sync on container startup
+                            </span>
+                        </label>
+                        <p class="text-xs text-gray-500 ml-6">Sync immediately when container starts, then continue with schedule</p>
+                    </div>
+
+                    <!-- Log Level -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-file-alt"></i> Log Level
+                        </label>
+                        <select id="config-loglevel"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="error">Error</option>
+                            <option value="warn">Warning</option>
+                            <option value="info" selected>Info</option>
+                            <option value="debug">Debug</option>
+                        </select>
+                    </div>
+
+                    <!-- Worker Count -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-users"></i> Parallel Downloads (Workers)
+                        </label>
+                        <input type="number" id="config-workers" min="1" max="20" value="6"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">Number of parallel download workers (1-20, default: 6)</p>
+                    </div>
+
+                    <!-- Albums -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-images"></i> Albums to Sync
+                        </label>
+                        <input type="text" id="config-albums"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="ALL or album1,album2,album3">
+                        <p class="text-xs text-gray-500 mt-1">Leave empty or "ALL" for entire library, or comma-separated album IDs</p>
+                    </div>
+
+                    <!-- Timezone -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-globe"></i> Timezone
+                        </label>
+                        <input type="text" id="config-timezone" value="Europe/Rome"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Europe/Rome">
+                        <p class="text-xs text-gray-500 mt-1">Timezone for scheduled syncs (e.g., Europe/Rome, America/New_York)</p>
+                    </div>
+
+                    <!-- Advanced Options (Collapsible) -->
+                    <div class="border-t pt-4">
+                        <button type="button" onclick="toggleAdvancedOptions()"
+                                class="flex items-center justify-between w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900">
+                            <span>
+                                <i class="fas fa-cog"></i> Advanced Options
+                            </span>
+                            <i id="advanced-toggle-icon" class="fas fa-chevron-down transition-transform"></i>
+                        </button>
+
+                        <div id="advanced-options" class="hidden mt-4 space-y-4">
+                            <!-- PUID/PGID -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        <i class="fas fa-user"></i> User ID (PUID)
+                                    </label>
+                                    <input type="number" id="config-puid" min="1000" value="1000"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <p class="text-xs text-gray-500 mt-1">User ID for file ownership</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        <i class="fas fa-users"></i> Group ID (PGID)
+                                    </label>
+                                    <input type="number" id="config-pgid" min="1000" value="1000"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <p class="text-xs text-gray-500 mt-1">Group ID for file ownership</p>
+                                </div>
+                            </div>
+
+                            <!-- Restart Schedule -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    <i class="fas fa-redo"></i> Restart Schedule (Optional)
+                                </label>
+                                <input type="text" id="config-restart-schedule"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="0 0 1 * * (monthly restart)">
+                                <p class="text-xs text-gray-500 mt-1">Cron schedule to delete .lastdone files and force full re-sync</p>
+                            </div>
+
+                            <!-- Healthcheck -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    <i class="fas fa-heartbeat"></i> Healthcheck URL (Optional)
+                                </label>
+                                <input type="text" id="config-healthcheck-url"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="https://hc-ping.com/your-uuid">
+                                <p class="text-xs text-gray-500 mt-1">Full healthcheck.io ping URL for monitoring (e.g., https://hc-ping.com/abc-123)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button id="config-save-btn" onclick="saveConfiguration()"
+                            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        <i class="fas fa-save"></i> <span id="config-save-text">Create Docker Compose</span>
+                    </button>
+                    <button onclick="closeConfigModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VNC Authentication Modal -->
+        <div id="vnc-auth-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-key text-purple-600"></i>
+                        Authenticate Profile - <span id="vnc-profile-name"></span>
+                    </h2>
+                    <button onclick="closeVNCModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div id="vnc-instructions" class="space-y-4">
+                    <div class="bg-purple-50 border-l-4 border-purple-400 p-4">
+                        <h3 class="font-bold text-purple-900 mb-2">
+                            <i class="fas fa-info-circle"></i> Authentication Steps
+                        </h3>
+                        <ol class="list-decimal list-inside space-y-2 text-sm text-purple-900">
+                            <li>Click "Start VNC Container" button below</li>
+                            <li>Wait for the VNC container to start (~5 seconds)</li>
+                            <li>Click "Open VNC" to open the VNC interface in a new tab</li>
+                            <li>In the VNC interface, double-click "open-chrome.sh" on the desktop and select execute</li>
+                            <li>Login to Google Photos in the Chrome browser</li>
+                            <li>Do not close anything</li>
+                            <li>Come back here and click "Stop VNC & Save"</li>
+                        </ol>
+                    </div>
+
+                    <div id="vnc-status" class="text-center">
+                        <button id="start-vnc-btn" onclick="startVNCContainer()"
+                                class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md">
+                            <i class="fas fa-play-circle"></i> Start VNC Container
+                        </button>
+                    </div>
+
+                    <div id="vnc-running" class="hidden space-y-4">
+                        <div class="bg-green-50 border-l-4 border-green-400 p-4">
+                            <p class="text-green-900 font-bold mb-2">
+                                <i class="fas fa-check-circle"></i> VNC Container is Running
+                            </p>
+                            <p class="text-sm text-green-800">
+                                Open VNC and authenticate with Google Photos, then return here to save.
+                            </p>
+                        </div>
+
+                        <div class="flex gap-3 justify-center">
+                            <a id="vnc-link" href="#" target="_blank"
+                               class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md">
+                                <i class="fas fa-external-link-alt"></i> Open VNC
+                            </a>
+                            <button onclick="stopVNCAndSave()"
+                                    class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                                <i class="fas fa-save"></i> Stop VNC & Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Viewer Modal -->
+        <div id="log-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[80vh] flex flex-col">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-terminal text-blue-500"></i>
+                        Live Logs - <span id="log-container-name"></span>
+                    </h2>
+                    <button onclick="closeLogModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 bg-gray-900">
+                    <pre id="log-content" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+                </div>
+                <div class="p-4 border-t flex justify-between">
+                    <label class="flex items-center text-sm text-gray-600">
+                        <input type="checkbox" id="auto-scroll" checked class="mr-2">
+                        Auto-scroll
+                    </label>
+                    <button onclick="downloadLogs()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        <i class="fas fa-download"></i> Download Logs
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div class="mb-4">
+                <h3 class="text-lg font-bold text-gray-800 mb-2" id="confirm-title"></h3>
+                <p class="text-gray-600" id="confirm-message"></p>
+            </div>
+            <div class="flex gap-3">
+                <button id="confirm-yes" class="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                    Confirm
+                </button>
+                <button id="confirm-no" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ services:
     ports:
       - "6080:80"
     volumes:
-      - ../${PROFILE_DIR:-./profile}:/profile
+      - ${PROFILE_DIR:-../profile}:/profile
       - ./desktop:/home/abc/Desktop
     environment:
       - PUID

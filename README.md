@@ -1,115 +1,102 @@
 # Google Photos Sync
 
-Automatically download all your photos from Google Photos.
+**This is a beta, expect some bugs!**
 
-## Quick Start
+Automatically download all your photos from Google Photos using Docker Compose with an intuitive Web GUI for managing multiple accounts.
 
-### 1. First Time Setup (Authentication)
+## Quick Start (Web GUI)
 
-Clone this repository and run the authentication script:
+### 1. Start Web GUI
 
 ```bash
 git clone <this-repo>
 cd Gphoto_sync
-./doauth.sh
+docker compose up -d
 ```
 
-This will:
-- Open a VNC window at `http://localhost:6080`
-- Let you login to your Google account
-- Save your login session in the `./profile` folder
+### 2. Open Web Interface
 
-### 2. Test It Works
+Open **http://localhost:8080** in your browser
 
-Run a test sync to make sure everything is working:
+### 3. Create and Configure Profile
 
-```bash
-./testsync.sh
-```
+1. Click **"Create New Profile"**
+2. Enter a name (e.g., "Family Photos", "Work Account")
+3. Click **"Authenticate"** → VNC opens at http://localhost:6080
+4. In VNC, double-click `open-chrome.sh` and login to Google Photos
+5. Return to Web GUI and click **"Stop VNC & Save"**
+6. Configure sync settings
+7. Click **"Create Docker Compose"**
 
-Your photos will be downloaded to the `./photos` folder.
-
-### 3. Setup Automatic Sync (Optional)
-
-Use Docker Compose to run syncs automatically on a schedule:
-
-```yaml
-services:
-  gphotos-sync:
-    build:
-      context: .
-    container_name: gphotos-sync
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - ./profile:/tmp/gphotos-cdp
-      - ./photos:/download
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - CRON_SCHEDULE=0 2 * * *  # Run every day at 2 AM
-      - LOGLEVEL=info
-      - TZ=Europe/Berlin
-```
+Your profile will start automatically and begin syncing!
 
 ---
 
-## Configuration Options
+## Screenshots
 
-### Schedule Settings
-
-- **CRON_SCHEDULE**: When to run the sync (default: `0 2 * * *` = daily at 2 AM)
-  - `0 * * * *` = every hour
-  - `0 */6 * * *` = every 6 hours
-  - `0 0 * * 0` = every Sunday at midnight
-
-### Download Specific Albums
-
-To download only specific albums instead of your entire library:
-
-1. Open the album in your browser
-2. Copy the album ID from the URL: `https://photos.google.com/album/{ALBUM_ID}`
-3. Set the environment variable:
-
-```yaml
-environment:
-  - ALBUMS=album1_id,album2_id,album3_id
-```
-
-To sync both albums AND your entire library, add `ALL` to the list:
-```yaml
-  - ALBUMS=ALL,album1_id,album2_id
-```
-
-### Other Options
-
-- **PUID/PGID**: User/group ID for file permissions (run `id -u` and `id -g` to find yours)
-- **LOGLEVEL**: `debug`, `info`, `warn`, or `error`
-- **WORKER_COUNT**: Number of parallel downloads (default: 6)
+📸 **[View all screenshots →](SCREENSHOTS.md)**
 
 ---
 
-## How It Works
+## Configuration Options (Web GUI)
 
-1. **First Run**: Downloads all your photos to `./photos`
-2. **Next Runs**: Only downloads new photos (skips existing ones)
-3. **Deleted Photos**: If you delete a photo from Google Photos, it won't be deleted locally. Instead, it's added to a `.removed` file.
-4. **File Structure**: Each photo gets its own folder (useful for Live Photos and edited versions)
+### Cron Schedule
+**When to run automatic syncs**
+
+Common patterns:
+- `0 3 * * *` - Daily at 3 AM (default)
+- `0 */6 * * *` - Every 6 hours
+- `0 0 * * 0` - Every Sunday at midnight
+- `*/30 * * * *` - Every 30 minutes
+
+Format: `minute hour day month weekday`
+
+### Run on Startup
+**Sync immediately when container starts**
+
+- ✅ **Enabled**: Runs sync on container startup, then follows cron schedule
+- ❌ **Disabled**: Only syncs according to cron schedule
+
+### Log Level
+**Amount of detail in logs**
+
+- `error` - Only critical errors
+- `warn` - Errors and warnings
+- `info` - Normal operation logs (recommended)
+- `debug` - Detailed debugging information
+
+### Parallel Downloads (Workers)
+**Number of concurrent downloads**
+
+- Range: 1-20 workers
+- Default: 6 workers
+- More workers = faster sync, but higher CPU/memory usage
+- Recommended: 4-8 for most systems
+
+### Albums
+**Which albums to sync**
+
+Options:
+1. **Empty or "ALL"** - Sync entire library
+2. **Specific albums** - `album_id_1,album_id_2,album_id_3`
+3. **Library + albums** - `ALL,album_id_1,album_id_2`
+
+To find album IDs:
+1. Open album in Google Photos
+2. Copy ID from URL: `https://photos.google.com/album/{ALBUM_ID}`
+
+### Timezone
+**Timezone for cron schedule**
+
+Examples:
+- `Europe/Rome`
+- `America/New_York`
+- `Asia/Tokyo`
+- `UTC`
+
+Ensures syncs run at the correct local time.
 
 ---
-
-## Tips & Tricks
-
-### Fast Initial Sync (Legacy Mode)
-
-If you have thousands of photos, the first sync can take a while. Use "legacy mode" to speed it up:
-
-```yaml
-environment:
-  - GPHOTOS_CDP_ARGS=-legacy
-```
-
-**Note**: Legacy mode is slower for checking updates, so switch back to normal mode after the initial sync is complete.
 
 ## Credits & License
 

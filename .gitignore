@@ -1,3 +1,6 @@
 .DS_Store
 /photos
 /profile*
+CLAUDE.md
+/photos*
+*.yml

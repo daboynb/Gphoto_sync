@@ -23,7 +23,8 @@ ENV \
     HEALTHCHECK_ID= \
     ALBUMS= \
     WORKER_COUNT=6 \
-    GPHOTOS_CDP_ARGS=
+    GPHOTOS_CDP_ARGS= \
+    RUN_ON_STARTUP=false
 
 RUN apt-get update && apt-get install -y \
         apt-transport-https \
