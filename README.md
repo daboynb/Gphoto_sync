@@ -34,6 +34,14 @@ Open **http://localhost:8080** in your browser
 
 Your profile will start automatically and begin syncing!
 
+---
+
+## Screenshots
+
+📸 **[View all screenshots →](SCREENSHOTS.md)**
+
+---
+
 ## Multiple Google Accounts
 
 The Web GUI makes managing multiple accounts easy:
