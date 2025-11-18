@@ -255,6 +255,11 @@ def create_compose(profile_num):
     puid = config.get('puid', 1000)
     pgid = config.get('pgid', 1000)
 
+    # Advanced options
+    legacy_mode = config.get('legacy_mode', False)
+    restart_schedule = config.get('restart_schedule', '')
+    healthcheck_url = config.get('healthcheck_url', '')
+
     # Build environment section
     env_vars = [
         f'      - PUID={puid}',
@@ -269,6 +274,30 @@ def create_compose(profile_num):
     # Add ALBUMS env var if specified
     if albums and albums.strip() and albums.strip().upper() != 'ALL':
         env_vars.append(f'      - ALBUMS={albums.strip()}')
+
+    # Add legacy mode if enabled
+    if legacy_mode:
+        env_vars.append(f'      - GPHOTOS_CDP_ARGS=-legacy')
+
+    # Add restart schedule if specified
+    if restart_schedule and restart_schedule.strip():
+        env_vars.append(f'      - RESTART_SCHEDULE={restart_schedule.strip()}')
+
+    # Add healthcheck if specified
+    if healthcheck_url and healthcheck_url.strip():
+        # Extract host and ID from full URL (e.g., https://hc-ping.com/abc-123)
+        url = healthcheck_url.strip()
+        if '/' in url:
+            parts = url.rsplit('/', 1)
+            healthcheck_host = parts[0] if len(parts) > 1 else 'https://hc-ping.com'
+            healthcheck_id = parts[1] if len(parts) > 1 else ''
+        else:
+            healthcheck_host = 'https://hc-ping.com'
+            healthcheck_id = url
+
+        if healthcheck_id:
+            env_vars.append(f'      - HEALTHCHECK_HOST={healthcheck_host}')
+            env_vars.append(f'      - HEALTHCHECK_ID={healthcheck_id}')
 
     compose_content = f"""services:
   gphotos-sync-profile{profile_num}:
@@ -331,8 +360,15 @@ def get_config(profile_num):
             'albums': '',
             'timezone': 'Europe/Rome',
             'puid': 1000,
-            'pgid': 1000
+            'pgid': 1000,
+            'legacy_mode': False,
+            'restart_schedule': '',
+            'healthcheck_url': ''
         }
+
+        # Track healthcheck components
+        healthcheck_host = ''
+        healthcheck_id = ''
 
         for env in env_vars:
             if isinstance(env, str) and '=' in env:
@@ -356,6 +392,18 @@ def get_config(profile_num):
                     config['puid'] = int(val)
                 elif key == 'PGID':
                     config['pgid'] = int(val)
+                elif key == 'GPHOTOS_CDP_ARGS':
+                    config['legacy_mode'] = '-legacy' in val
+                elif key == 'RESTART_SCHEDULE':
+                    config['restart_schedule'] = val
+                elif key == 'HEALTHCHECK_HOST':
+                    healthcheck_host = val
+                elif key == 'HEALTHCHECK_ID':
+                    healthcheck_id = val
+
+        # Reconstruct full healthcheck URL if both parts are present
+        if healthcheck_host and healthcheck_id:
+            config['healthcheck_url'] = f"{healthcheck_host}/{healthcheck_id}"
 
         return jsonify(config)
     except Exception as e:

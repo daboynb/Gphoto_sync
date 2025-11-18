@@ -525,6 +525,20 @@ async function createNewProfile() {
 let currentConfigProfileNum = null;
 let isEditMode = false;
 
+// Toggle Advanced Options
+function toggleAdvancedOptions() {
+    const advancedDiv = document.getElementById('advanced-options');
+    const icon = document.getElementById('advanced-toggle-icon');
+
+    if (advancedDiv.classList.contains('hidden')) {
+        advancedDiv.classList.remove('hidden');
+        icon.classList.add('rotate-180');
+    } else {
+        advancedDiv.classList.add('hidden');
+        icon.classList.remove('rotate-180');
+    }
+}
+
 function openConfigModal(profileNum, profileName) {
     currentConfigProfileNum = profileNum;
     isEditMode = false;
@@ -542,6 +556,17 @@ function openConfigModal(profileNum, profileName) {
     document.getElementById('config-workers').value = 6;
     document.getElementById('config-albums').value = '';
     document.getElementById('config-timezone').value = 'Europe/Rome';
+
+    // Advanced options defaults
+    document.getElementById('config-puid').value = 1000;
+    document.getElementById('config-pgid').value = 1000;
+    document.getElementById('config-legacy-mode').checked = false;
+    document.getElementById('config-restart-schedule').value = '';
+    document.getElementById('config-healthcheck-url').value = '';
+
+    // Hide advanced options by default
+    document.getElementById('advanced-options').classList.add('hidden');
+    document.getElementById('advanced-toggle-icon').classList.remove('rotate-180');
 }
 
 async function editProfileConfig(profileName, displayName) {
@@ -573,6 +598,17 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-albums').value = config.albums || '';
         document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
 
+        // Advanced options
+        document.getElementById('config-puid').value = config.puid || 1000;
+        document.getElementById('config-pgid').value = config.pgid || 1000;
+        document.getElementById('config-legacy-mode').checked = (config.gphotos_cdp_args || '').includes('-legacy');
+        document.getElementById('config-restart-schedule').value = config.restart_schedule || '';
+        document.getElementById('config-healthcheck-url').value = config.healthcheck_url || '';
+
+        // Hide advanced options by default
+        document.getElementById('advanced-options').classList.add('hidden');
+        document.getElementById('advanced-toggle-icon').classList.remove('rotate-180');
+
         document.getElementById('config-modal').classList.remove('hidden');
     } catch (error) {
         console.error('Error loading config:', error);
@@ -586,6 +622,7 @@ function closeConfigModal() {
 }
 
 async function saveConfiguration() {
+    // Basic configuration
     const config = {
         cron_schedule: document.getElementById('config-cron').value.trim(),
         run_on_startup: document.getElementById('config-run-on-startup').checked,
@@ -593,8 +630,13 @@ async function saveConfiguration() {
         worker_count: parseInt(document.getElementById('config-workers').value),
         albums: document.getElementById('config-albums').value.trim(),
         timezone: document.getElementById('config-timezone').value.trim(),
-        puid: 1000,
-        pgid: 1000
+
+        // Advanced options
+        puid: parseInt(document.getElementById('config-puid').value),
+        pgid: parseInt(document.getElementById('config-pgid').value),
+        legacy_mode: document.getElementById('config-legacy-mode').checked,
+        restart_schedule: document.getElementById('config-restart-schedule').value.trim(),
+        healthcheck_url: document.getElementById('config-healthcheck-url').value.trim()
     };
 
     try {
