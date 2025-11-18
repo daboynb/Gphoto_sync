@@ -21,5 +21,7 @@ RUN \
     rm -rf /var/lib/apt/lists/*
 
 COPY startup2.sh /startup2.sh
+COPY desktop/open-chrome.sh /tmp/open-chrome.sh
+RUN chmod +x /tmp/open-chrome.sh
 
 ENTRYPOINT [ "/startup2.sh" ]

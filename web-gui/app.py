@@ -43,6 +43,18 @@ def parse_cron_next_run(cron_schedule, tz='Europe/Rome'):
     except:
         return {'next_run': 'N/A', 'time_until': 'N/A'}
 
+def get_profile_metadata(profile_num):
+    """Get custom profile name from metadata file"""
+    metadata_file = f'/workspace/profile{profile_num}/.profile_metadata.json'
+    try:
+        if os.path.exists(metadata_file):
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+                return metadata.get('name', f'profile{profile_num}')
+    except:
+        pass
+    return f'profile{profile_num}'
+
 def get_container_info(container):
     """Extract relevant info from container"""
     env_vars = {}
@@ -58,10 +70,18 @@ def get_container_info(container):
     if not profile_name:
         profile_name = 'default'
 
+    # Get custom profile name if available
+    profile_num = profile_name.replace('profile', '')
+    display_name = profile_name
+    if profile_num.isdigit():
+        custom_name = get_profile_metadata(int(profile_num))
+        display_name = custom_name
+
     return {
         'id': container.id[:12],
         'name': container.name,
         'profile': profile_name,
+        'display_name': display_name,
         'status': container.status,
         'state': container.attrs['State']['Status'],
         'created': container.attrs['Created'],
@@ -150,6 +170,387 @@ def api_stats():
         'running': running,
         'stopped': stopped
     })
+
+@app.route('/api/available-profiles')
+def api_available_profiles():
+    """Get profiles that exist but don't have running containers"""
+    import os
+    import glob
+
+    # Find all profile directories
+    profile_dirs = glob.glob('/workspace/profile*')
+    available_profiles = []
+
+    # Get running container names
+    containers = get_sync_containers()
+    running_profiles = set()
+    for c in containers:
+        # Extract profile number from container name
+        name = c.name.replace(get_container_prefix(), '').replace('-', '')
+        if name.startswith('profile'):
+            running_profiles.add(name)
+
+    # Check each profile directory
+    for profile_path in profile_dirs:
+        profile_name = os.path.basename(profile_path)
+
+        # Skip if already running
+        if profile_name in running_profiles:
+            continue
+
+        # Extract profile number
+        profile_num = profile_name.replace('profile', '')
+        if profile_num.isdigit():
+            compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+            has_compose = os.path.exists(compose_file)
+
+            # Get custom display name
+            display_name = get_profile_metadata(int(profile_num))
+
+            # Show all profiles that exist but aren't running
+            # The UI will offer to create docker-compose if missing
+            available_profiles.append({
+                'name': profile_name,
+                'display_name': display_name,
+                'number': int(profile_num),
+                'path': profile_path,
+                'has_compose': has_compose,
+                'compose_file': f'docker-compose.profile{profile_num}.yml'
+            })
+
+    return jsonify(sorted(available_profiles, key=lambda x: x['number']))
+
+def get_host_workspace_path():
+    """Get the real host path that is mounted as /workspace in this container"""
+    try:
+        # Get our own container info
+        container = docker_client.containers.get('gphotos-web-gui')
+        for mount in container.attrs['Mounts']:
+            if mount['Destination'] == '/workspace':
+                return mount['Source']
+    except:
+        pass
+    # Fallback to /workspace if we can't determine (for local dev)
+    return '/workspace'
+
+@app.route('/api/create-compose/<int:profile_num>', methods=['POST'])
+def create_compose(profile_num):
+    """Create docker-compose file for a profile"""
+    import os
+
+    # Use absolute host paths to avoid Docker volume issues
+    workspace_path = get_host_workspace_path()
+
+    compose_content = f"""services:
+  gphotos-sync-profile{profile_num}:
+    build:
+      context: {workspace_path}
+    container_name: gphotos-sync-profile{profile_num}
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - {workspace_path}/profile{profile_num}:/tmp/gphotos-cdp
+      - {workspace_path}/photos{profile_num}:/download
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 {2 + profile_num} * * *
+      - RUN_ON_STARTUP=true
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
+    networks:
+      - gphotos-network
+
+networks:
+  gphotos-network:
+    external: true
+"""
+
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+
+    try:
+        with open(compose_file, 'w') as f:
+            f.write(compose_content)
+
+        return jsonify({
+            'status': 'created',
+            'file': f'docker-compose.profile{profile_num}.yml',
+            'message': f'Docker compose file created for profile {profile_num}'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/start-profile/<int:profile_num>', methods=['POST'])
+def start_profile(profile_num):
+    """Start a profile container using docker-compose"""
+    import subprocess
+
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+
+    if not os.path.exists(compose_file):
+        return jsonify({'error': f'docker-compose.profile{profile_num}.yml not found'}), 404
+
+    try:
+        # Run docker compose up -d
+        result = subprocess.run(
+            ['docker', 'compose', '-f', compose_file, 'up', '-d'],
+            cwd='/workspace',
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'started',
+                'message': f'Profile {profile_num} started successfully',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': f'Failed to start profile {profile_num}',
+                'output': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Command timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/create-new-profile', methods=['POST'])
+def create_new_profile():
+    """Create a new profile directory with custom name"""
+    import subprocess
+    from flask import request
+
+    data = request.get_json()
+    profile_name = data.get('name', '').strip()
+
+    if not profile_name:
+        return jsonify({'error': 'Profile name is required'}), 400
+
+    # Find next available profile number
+    profile_num = 1
+    while os.path.exists(f'/workspace/profile{profile_num}'):
+        profile_num += 1
+
+    profile_dir = f'/workspace/profile{profile_num}'
+    photos_dir = f'/workspace/photos{profile_num}'
+
+    try:
+        # Get PUID and PGID to create directories with correct ownership
+        puid = int(os.getenv('PUID', '1000'))
+        pgid = int(os.getenv('PGID', '1000'))
+
+        # Create profile directory
+        os.makedirs(profile_dir, exist_ok=True)
+        os.chown(profile_dir, puid, pgid)
+
+        # Create photos directory
+        os.makedirs(photos_dir, exist_ok=True)
+        os.chown(photos_dir, puid, pgid)
+
+        # Create a metadata file to store custom name
+        metadata = {
+            'name': profile_name,
+            'created_at': datetime.now().isoformat(),
+            'profile_num': profile_num
+        }
+
+        metadata_file = f'{profile_dir}/.profile_metadata.json'
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        os.chown(metadata_file, puid, pgid)
+
+        return jsonify({
+            'status': 'created',
+            'profile_num': profile_num,
+            'profile_name': profile_name,
+            'profile_dir': profile_dir,
+            'photos_dir': photos_dir,
+            'message': f'Profile "{profile_name}" created as profile{profile_num}'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/start-auth/<int:profile_num>', methods=['POST'])
+def start_auth(profile_num):
+    """Start VNC authentication container for a profile"""
+    import subprocess
+
+    # Check if profile directory exists
+    if not os.path.exists(f'/workspace/profile{profile_num}'):
+        return jsonify({'error': f'Profile directory profile{profile_num} not found'}), 404
+
+    try:
+        # Get PUID and PGID from environment or use defaults
+        puid = os.getenv('PUID', '1000')
+        pgid = os.getenv('PGID', '1000')
+
+        # Get the host path for the profile
+        # Since we're running docker from inside web-gui container,
+        # we need to use the host path, not the container path
+        host_workspace = get_host_workspace_path()
+        profile_dir = f'{host_workspace}/profile{profile_num}'
+
+        # IMPORTANT: Stop any existing auth container first to avoid reusing wrong profile
+        subprocess.run(
+            ['docker', 'compose', '-f', 'docker-compose.yml', 'down'],
+            cwd='/workspace/auth',
+            capture_output=True,
+            timeout=30
+        )
+
+        # Start the auth container with correct profile
+        # Use --force-recreate to ensure the new PROFILE_DIR is used
+        result = subprocess.run(
+            ['docker', 'compose', '-f', 'docker-compose.yml', 'up', '-d', '--force-recreate'],
+            cwd='/workspace/auth',
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={
+                **os.environ,
+                'PROFILE_DIR': profile_dir,
+                'PUID': str(puid),
+                'PGID': str(pgid)
+            }
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'started',
+                'profile_num': profile_num,
+                'vnc_url': 'http://localhost:6080',
+                'message': f'VNC container started for profile{profile_num}',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': f'Failed to start VNC container',
+                'output': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Command timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stop-auth', methods=['POST'])
+def stop_auth():
+    """Stop VNC authentication container"""
+    import subprocess
+
+    try:
+        # Stop the auth container
+        result = subprocess.run(
+            ['docker', 'compose', '-f', 'docker-compose.yml', 'down'],
+            cwd='/workspace/auth',
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'stopped',
+                'message': 'VNC container stopped',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': 'Failed to stop VNC container',
+                'output': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Command timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth-status', methods=['GET'])
+def auth_status():
+    """Check if VNC auth container is running"""
+    try:
+        # Check if auth container exists
+        containers = docker_client.containers.list(filters={'name': 'auth'})
+
+        if containers:
+            container = containers[0]
+            return jsonify({
+                'running': container.status == 'running',
+                'status': container.status,
+                'id': container.id[:12]
+            })
+        else:
+            return jsonify({
+                'running': False,
+                'status': 'not_found'
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete-profile/<int:profile_num>', methods=['DELETE'])
+def delete_profile(profile_num):
+    """Delete a profile: stop and remove container, delete docker-compose file"""
+    import subprocess
+
+    container_name = f'{get_container_prefix()}-profile{profile_num}'
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+
+    errors = []
+    success_messages = []
+
+    try:
+        # Step 1: Check if container exists and remove it
+        try:
+            container = docker_client.containers.get(container_name)
+            # Stop container if running
+            if container.status == 'running':
+                container.stop(timeout=10)
+                success_messages.append(f'Container {container_name} stopped')
+            # Remove container
+            container.remove()
+            success_messages.append(f'Container {container_name} removed')
+        except docker.errors.NotFound:
+            success_messages.append(f'Container {container_name} not found (already deleted)')
+        except Exception as e:
+            errors.append(f'Error removing container: {str(e)}')
+
+        # Step 2: Delete docker-compose file if it exists
+        if os.path.exists(compose_file):
+            try:
+                os.remove(compose_file)
+                success_messages.append(f'File docker-compose.profile{profile_num}.yml deleted')
+            except Exception as e:
+                errors.append(f'Error deleting compose file: {str(e)}')
+        else:
+            success_messages.append(f'Compose file not found (already deleted)')
+
+        # Return response
+        if errors:
+            return jsonify({
+                'status': 'partial',
+                'message': 'Profile partially deleted with some errors',
+                'success': success_messages,
+                'errors': errors
+            }), 207  # Multi-Status
+        else:
+            return jsonify({
+                'status': 'deleted',
+                'message': f'Profile {profile_num} deleted successfully',
+                'success': success_messages
+            })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'success': success_messages,
+            'errors': errors
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)

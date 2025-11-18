@@ -1,5 +1,4 @@
 services:
-  # Web GUI for managing sync containers
   gphotos-web-gui:
     build:
       context: ./web-gui
@@ -9,23 +8,13 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace  # Mount project directory to access profiles and create compose files
     environment:
       - CONTAINER_PREFIX=gphotos-sync
+    networks:
+      - gphotos-network
 
-  gphotos-sync-profile1:
-    build:
-      context: .
-    container_name: gphotos-sync-profile1
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - ./profile1:/tmp/gphotos-cdp
-      - ./photos1:/download
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - CRON_SCHEDULE=0 3 * * *  # Ogni giorno alle 2:00 AM
-      - RUN_ON_STARTUP=true      # Sync immediato all'avvio
-      - LOGLEVEL=info
-      - TZ=Europe/Rome
-      - WORKER_COUNT=6
+networks:
+  gphotos-network:
+    name: gphotos-network
+    driver: bridge

@@ -22,9 +22,120 @@
             </div>
         </div>
 
+        <!-- Create New Profile Button -->
+        <div class="mb-6">
+            <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                <i class="fas fa-plus-circle"></i> Create New Profile
+            </button>
+        </div>
+
+        <!-- Available Profiles (not started) -->
+        <div id="available-profiles" class="mb-6"></div>
+
         <!-- Containers List -->
         <div id="containers-list" class="space-y-4">
             <!-- Containers will be loaded here -->
+        </div>
+
+        <!-- Create Profile Modal -->
+        <div id="create-profile-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-user-plus text-green-600"></i>
+                        Create New Profile
+                    </h2>
+                    <button onclick="closeCreateProfileModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="mb-4">
+                    <label for="profile-name-input" class="block text-sm font-medium text-gray-700 mb-2">
+                        Profile Name
+                    </label>
+                    <input type="text" id="profile-name-input"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                           placeholder="e.g., Family Photos, Work Account, etc."
+                           maxlength="50">
+                </div>
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4">
+                    <p class="text-sm text-blue-800">
+                        <i class="fas fa-info-circle"></i>
+                        After creating the profile, you'll need to authenticate it using the VNC interface.
+                    </p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="createNewProfile()"
+                            class="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                        <i class="fas fa-check"></i> Create Profile
+                    </button>
+                    <button onclick="closeCreateProfileModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VNC Authentication Modal -->
+        <div id="vnc-auth-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-key text-purple-600"></i>
+                        Authenticate Profile - <span id="vnc-profile-name"></span>
+                    </h2>
+                    <button onclick="closeVNCModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div id="vnc-instructions" class="space-y-4">
+                    <div class="bg-purple-50 border-l-4 border-purple-400 p-4">
+                        <h3 class="font-bold text-purple-900 mb-2">
+                            <i class="fas fa-info-circle"></i> Authentication Steps
+                        </h3>
+                        <ol class="list-decimal list-inside space-y-2 text-sm text-purple-900">
+                            <li>Click "Start VNC Container" button below</li>
+                            <li>Wait for the VNC container to start (~5 seconds)</li>
+                            <li>Click "Open VNC" to open the VNC interface in a new tab</li>
+                            <li>In the VNC interface, double-click "open-chrome.sh" on the desktop and select execute</li>
+                            <li>Login to Google Photos in the Chrome browser</li>
+                            <li>Do not close anything</li>
+                            <li>Come back here and click "Stop VNC & Save"</li>
+                        </ol>
+                    </div>
+
+                    <div id="vnc-status" class="text-center">
+                        <button id="start-vnc-btn" onclick="startVNCContainer()"
+                                class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md">
+                            <i class="fas fa-play-circle"></i> Start VNC Container
+                        </button>
+                    </div>
+
+                    <div id="vnc-running" class="hidden space-y-4">
+                        <div class="bg-green-50 border-l-4 border-green-400 p-4">
+                            <p class="text-green-900 font-bold mb-2">
+                                <i class="fas fa-check-circle"></i> VNC Container is Running
+                            </p>
+                            <p class="text-sm text-green-800">
+                                Open VNC and authenticate with Google Photos, then return here to save.
+                            </p>
+                        </div>
+
+                        <div class="flex gap-3 justify-center">
+                            <a href="http://localhost:6080" target="_blank"
+                               class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md">
+                                <i class="fas fa-external-link-alt"></i> Open VNC
+                            </a>
+                            <button onclick="stopVNCAndSave()"
+                                    class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                                <i class="fas fa-save"></i> Stop VNC & Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Log Viewer Modal -->
