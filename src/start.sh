@@ -22,9 +22,14 @@ info "running with user uid: $(id -u abc) and user gid: $(id -g abc)"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-/download}"
 PROFILE_DIR="${PROFILE_DIR:-/tmp/gphotos-cdp}"
 
-mkdir -p "$DOWNLOAD_DIR" "$PROFILE_DIR"
-chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app
-chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR"
+# Create all needed directories
+mkdir -p "$DOWNLOAD_DIR" "$DOWNLOAD_DIR/tmp" "$PROFILE_DIR"
+
+# Set ownership and permissions
+chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app 2>/dev/null || true
+chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR" 2>/dev/null || true
+
+info "download dir permissions: $(ls -ld $DOWNLOAD_DIR)"
 
 if [[ "$1" == 'no-cron' ]]; then
     sudo -E -u abc sh /app/sync.sh

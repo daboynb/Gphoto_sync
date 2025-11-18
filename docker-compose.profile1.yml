@@ -1,0 +1,24 @@
+services:
+  gphotos-sync-profile1:
+    build:
+      context: .
+    container_name: gphotos-sync-profile1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./profile1:/tmp/gphotos-cdp
+      - ./photos1:/download
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 2 * * *
+      - RUN_ON_STARTUP=true
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
+    networks:
+      - gphotos-network
+
+networks:
+  gphotos-network:
+    external: true

@@ -1,4 +1,17 @@
 services:
+  # Web GUI for managing sync containers
+  gphotos-web-gui:
+    build:
+      context: ./web-gui
+    container_name: gphotos-web-gui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CONTAINER_PREFIX=gphotos-sync
+
   gphotos-sync-profile1:
     build:
       context: .
@@ -11,7 +24,7 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - CRON_SCHEDULE=0 2 * * *  # Ogni giorno alle 2:00 AM
+      - CRON_SCHEDULE=0 3 * * *  # Ogni giorno alle 2:00 AM
       - RUN_ON_STARTUP=true      # Sync immediato all'avvio
       - LOGLEVEL=info
       - TZ=Europe/Rome

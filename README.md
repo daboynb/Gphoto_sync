@@ -12,35 +12,17 @@ cd Gphoto_sync
 ./doauth.sh  # Opens VNC at http://localhost:6080 - login with your Google account
 ```
 
-### 2. Start Automatic Sync
+### 2. Start Services
 
-Create `docker-compose.yml`:
-
-```yaml
-services:
-  gphotos-sync:
-    build:
-      context: .
-    container_name: gphotos-sync
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - ./profile1:/tmp/gphotos-cdp
-      - ./photos1:/download
-    environment:
-      - PUID=1000              # Your user ID (run: id -u)
-      - PGID=1000              # Your group ID (run: id -g)
-      - CRON_SCHEDULE=0 2 * * *  # Daily at 2 AM
-      - RUN_ON_STARTUP=true    # Sync immediately on startup
-      - LOGLEVEL=info
-      - TZ=Europe/Rome
-      - WORKER_COUNT=6
-```
-
-Start sync:
 ```bash
-docker compose up -d
-docker compose logs -f  # Watch logs
+# Start Web GUI (optional but recommended)
+./start-gui.sh
+
+# Start profile 1
+./start-profile.sh 1
+
+# Open Web GUI
+http://localhost:8080
 ```
 
 ---
@@ -55,53 +37,51 @@ docker compose logs -f  # Watch logs
 ./doauth.sh  # Creates profile3 → login third account (optional)
 ```
 
-### 2. Configure docker-compose.yml
+### 2. Start Services
 
-```yaml
-services:
-  gphotos-sync-profile1:
-    build:
-      context: .
-    container_name: gphotos-sync-profile1
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - ./profile1:/tmp/gphotos-cdp
-      - ./photos1:/download
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - CRON_SCHEDULE=0 2 * * *
-      - RUN_ON_STARTUP=true
-      - LOGLEVEL=info
-      - TZ=Europe/Rome
-      - WORKER_COUNT=6
+```bash
+# Start Web GUI first
+./start-gui.sh
 
-  gphotos-sync-profile2:
-    build:
-      context: .
-    container_name: gphotos-sync-profile2
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - ./profile2:/tmp/gphotos-cdp
-      - ./photos2:/download
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - CRON_SCHEDULE=0 3 * * *  # 3 AM (1 hour after profile1)
-      - RUN_ON_STARTUP=true
-      - LOGLEVEL=info
-      - TZ=Europe/Rome
-      - WORKER_COUNT=6
+# Start individual profiles
+./start-profile.sh 1
+./start-profile.sh 2
+
+# Or start everything at once
+./start-all.sh
+
+# Open Web GUI
+http://localhost:8080
 ```
 
-Start all:
+### Management Commands
+
 ```bash
-docker compose up -d
+# Start/Stop individual profiles
+./start-profile.sh 1
+./stop-profile.sh 1
+
+# Start/Stop all services
+./start-all.sh
+./stop-all.sh
+
+# View logs for a specific profile
+docker compose -f docker-compose.profile1.yml logs -f
 ```
 
 Result: `profile1/` → `photos1/`, `profile2/` → `photos2/`
+
+---
+
+## Web GUI
+
+The docker-compose.yml includes a web dashboard at **http://localhost:8080** with:
+
+- 📊 Real-time container status
+- ⏰ Next sync countdown
+- 📜 Live log streaming
+- ▶️ Start/Stop/Restart controls
+- 📥 Download logs
 
 ---
 
