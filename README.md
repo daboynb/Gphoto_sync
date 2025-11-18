@@ -38,6 +38,19 @@ Your profile will start automatically and begin syncing!
 
 ---
 
+## How It Works
+
+This tool uses **Chrome DevTools Protocol (CDP)** instead of Google Photos API:
+
+1. **Manual Authentication**: Login once via VNC browser, Chrome saves session cookies
+2. **Automated Browsing**: Headless Chrome navigates Google Photos using saved credentials
+3. **Web Scraping**: Finds photos/videos by inspecting the web page DOM
+4. **Direct Download**: Downloads files using intercepted network requests
+
+**Benefits**: No API limitations, full quality downloads, works as long as the web interface exists.
+
+---
+
 ## Configuration Options (Web GUI)
 
 ### Cron Schedule
