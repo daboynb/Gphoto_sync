@@ -46,7 +46,7 @@ else
     # Run sync immediately on startup if RUN_ON_STARTUP is set
     if [[ "$RUN_ON_STARTUP" == "true" ]] || [[ "$RUN_ON_STARTUP" == "1" ]]; then
         info "running initial sync on startup..."
-        sudo -E -u abc sh /app/sync.sh
+        sudo -E -u abc sh /app/sync.sh > "$LOGFIFO" 2>&1
         info "initial sync completed, starting cron scheduler..."
     fi
 

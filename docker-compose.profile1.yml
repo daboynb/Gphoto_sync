@@ -1,7 +1,6 @@
 services:
   gphotos-sync-profile1:
-    build:
-      context: /home/taki/Documents/GitHub/Gphoto_sync
+    image: gphotos-sync:latest
     container_name: gphotos-sync-profile1
     restart: unless-stopped
     privileged: true

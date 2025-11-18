@@ -6,6 +6,21 @@
     <title>Google Photos Sync Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+    </style>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
@@ -70,6 +85,103 @@
                         <i class="fas fa-check"></i> Create Profile
                     </button>
                     <button onclick="closeCreateProfileModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Configuration Modal -->
+        <div id="config-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-cog text-blue-600"></i>
+                        Configure Profile - <span id="config-profile-name"></span>
+                    </h2>
+                    <button onclick="closeConfigModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Cron Schedule -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-clock"></i> Sync Schedule (Cron)
+                        </label>
+                        <input type="text" id="config-cron"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="0 3 * * *" value="0 3 * * *">
+                        <p class="text-xs text-gray-500 mt-1">Cron expression (e.g., "0 3 * * *" = daily at 3 AM)</p>
+                    </div>
+
+                    <!-- Run on Startup -->
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="config-run-on-startup" checked
+                                   class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <span class="text-sm font-medium text-gray-700">
+                                <i class="fas fa-rocket"></i> Run sync on container startup
+                            </span>
+                        </label>
+                        <p class="text-xs text-gray-500 ml-6">Sync immediately when container starts, then continue with schedule</p>
+                    </div>
+
+                    <!-- Log Level -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-file-alt"></i> Log Level
+                        </label>
+                        <select id="config-loglevel"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="error">Error</option>
+                            <option value="warn">Warning</option>
+                            <option value="info" selected>Info</option>
+                            <option value="debug">Debug</option>
+                        </select>
+                    </div>
+
+                    <!-- Worker Count -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-users"></i> Parallel Downloads (Workers)
+                        </label>
+                        <input type="number" id="config-workers" min="1" max="20" value="6"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">Number of parallel download workers (1-20, default: 6)</p>
+                    </div>
+
+                    <!-- Albums -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-images"></i> Albums to Sync
+                        </label>
+                        <input type="text" id="config-albums"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="ALL or album1,album2,album3">
+                        <p class="text-xs text-gray-500 mt-1">Leave empty or "ALL" for entire library, or comma-separated album IDs</p>
+                    </div>
+
+                    <!-- Timezone -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-globe"></i> Timezone
+                        </label>
+                        <input type="text" id="config-timezone" value="Europe/Rome"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Europe/Rome">
+                        <p class="text-xs text-gray-500 mt-1">Timezone for scheduled syncs (e.g., Europe/Rome, America/New_York)</p>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button id="config-save-btn" onclick="saveConfiguration()"
+                            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        <i class="fas fa-save"></i> <span id="config-save-text">Create Docker Compose</span>
+                    </button>
+                    <button onclick="closeConfigModal()"
                             class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
                         Cancel
                     </button>
@@ -162,6 +274,27 @@
                         <i class="fas fa-download"></i> Download Logs
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div class="mb-4">
+                <h3 class="text-lg font-bold text-gray-800 mb-2" id="confirm-title"></h3>
+                <p class="text-gray-600" id="confirm-message"></p>
+            </div>
+            <div class="flex gap-3">
+                <button id="confirm-yes" class="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                    Confirm
+                </button>
+                <button id="confirm-no" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                    Cancel
+                </button>
             </div>
         </div>
     </div>

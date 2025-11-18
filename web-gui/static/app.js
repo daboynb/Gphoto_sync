@@ -1,6 +1,73 @@
 let currentLogStream = null;
 let currentContainerId = null;
 
+// Toast Notification System
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+
+    const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        warning: 'bg-yellow-500',
+        info: 'bg-blue-500'
+    };
+
+    const icons = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-circle',
+        warning: 'fa-exclamation-triangle',
+        info: 'fa-info-circle'
+    };
+
+    toast.className = `${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-md animate-slide-in`;
+    toast.innerHTML = `
+        <i class="fas ${icons[type]} text-xl"></i>
+        <span class="flex-1">${message}</span>
+        <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        toast.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+}
+
+// Custom Confirm Dialog
+function showConfirm(title, message, onConfirm) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+
+    const yesBtn = document.getElementById('confirm-yes');
+    const noBtn = document.getElementById('confirm-no');
+
+    // Remove old listeners
+    const newYesBtn = yesBtn.cloneNode(true);
+    const newNoBtn = noBtn.cloneNode(true);
+    yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+    noBtn.parentNode.replaceChild(newNoBtn, noBtn);
+
+    // Add new listeners
+    newYesBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        onConfirm();
+    });
+
+    newNoBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+
+    modal.classList.remove('hidden');
+}
+
 // Fetch and display containers
 async function loadContainers() {
     try {
@@ -85,6 +152,10 @@ async function loadContainers() {
                             <i class="fas fa-rotate"></i> Restart
                         </button>
                         ${container.profile !== 'default' ? `
+                            <button onclick="editProfileConfig('${container.profile}', '${container.display_name || container.name}')"
+                                    class="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 text-sm">
+                                <i class="fas fa-cog"></i> Edit Config
+                            </button>
                             <button onclick="deleteProfile('${container.profile}')"
                                     class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 text-sm">
                                 <i class="fas fa-trash"></i> Delete
@@ -200,31 +271,43 @@ async function startContainer(containerId) {
 }
 
 async function stopContainer(containerId) {
-    if (confirm('Are you sure you want to stop this container?')) {
-        try {
-            await fetch(`/api/container/${containerId}/stop`, { method: 'POST' });
-            setTimeout(() => {
-                loadContainers();
-                loadStats();
-            }, 1000);
-        } catch (error) {
-            console.error('Error stopping container:', error);
+    showConfirm(
+        'Stop Container',
+        'Are you sure you want to stop this container?',
+        async () => {
+            try {
+                await fetch(`/api/container/${containerId}/stop`, { method: 'POST' });
+                showToast('Container stopped successfully', 'success');
+                setTimeout(() => {
+                    loadContainers();
+                    loadStats();
+                }, 1000);
+            } catch (error) {
+                console.error('Error stopping container:', error);
+                showToast('Error stopping container', 'error');
+            }
         }
-    }
+    );
 }
 
 async function restartContainer(containerId) {
-    if (confirm('Are you sure you want to restart this container?')) {
-        try {
-            await fetch(`/api/container/${containerId}/restart`, { method: 'POST' });
-            setTimeout(() => {
-                loadContainers();
-                loadStats();
-            }, 1000);
-        } catch (error) {
-            console.error('Error restarting container:', error);
+    showConfirm(
+        'Restart Container',
+        'Are you sure you want to restart this container?',
+        async () => {
+            try {
+                await fetch(`/api/container/${containerId}/restart`, { method: 'POST' });
+                showToast('Container restarted successfully', 'success');
+                setTimeout(() => {
+                    loadContainers();
+                    loadStats();
+                }, 1000);
+            } catch (error) {
+                console.error('Error restarting container:', error);
+                showToast('Error restarting container', 'error');
+            }
         }
-    }
+    );
 }
 
 // Load available profiles (not started)
@@ -264,14 +347,10 @@ async function loadAvailableProfiles() {
                                         }
                                     </div>
                                     <div class="flex gap-2">
-                                        <button onclick="startVNCAuth(${profile.number}, '${profile.display_name || profile.name}')"
-                                                class="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600">
-                                            <i class="fas fa-key"></i> Authenticate
-                                        </button>
                                         ${!profile.has_compose ? `
-                                            <button onclick="createCompose(${profile.number})"
-                                                    class="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">
-                                                <i class="fas fa-file-circle-plus"></i> Create Docker Compose
+                                            <button onclick="startVNCAuth(${profile.number}, '${profile.display_name || profile.name}')"
+                                                    class="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600">
+                                                <i class="fas fa-key"></i> Authenticate
                                             </button>
                                         ` : `
                                             <button onclick="startProfileFromGUI(${profile.number})"
@@ -279,6 +358,10 @@ async function loadAvailableProfiles() {
                                                 <i class="fas fa-play"></i> Start
                                             </button>
                                         `}
+                                        <button onclick="deleteProfileFiles(${profile.number}, '${profile.display_name || profile.name}')"
+                                                class="px-3 py-1 bg-gray-700 text-white text-sm rounded hover:bg-gray-800">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
                                     </div>
                                 </div>
                             `).join('')}
@@ -292,23 +375,7 @@ async function loadAvailableProfiles() {
     }
 }
 
-// Create docker-compose for a profile
-async function createCompose(profileNum) {
-    try {
-        const response = await fetch(`/api/create-compose/${profileNum}`, { method: 'POST' });
-        const data = await response.json();
-
-        if (data.status === 'created') {
-            // Automatically start the profile after creating compose file
-            setTimeout(() => startProfileFromGUI(profileNum), 500);
-        } else {
-            alert('❌ Error: ' + (data.error || 'Unknown error'));
-        }
-    } catch (error) {
-        console.error('Error creating compose:', error);
-        alert('❌ Error creating docker-compose file');
-    }
-}
+// Note: createCompose is replaced by openConfigModal + saveConfiguration
 
 // Start profile directly from GUI
 async function startProfileFromGUI(profileNum) {
@@ -324,50 +391,83 @@ async function startProfileFromGUI(profileNum) {
                 loadAvailableProfiles();
             }, 1000);
         } else {
-            alert('❌ Error starting profile: ' + (data.error || 'Unknown error'));
+            showToast('Error starting profile: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Error starting profile:', error);
-        alert('❌ Error starting profile');
+        showToast('Error starting profile', 'error');
     }
 }
 
-// Delete profile (container + compose file)
+// Delete profile (container + compose file) - for running containers
 async function deleteProfile(profileName) {
     // Extract profile number from name (e.g., "profile1" -> "1")
     const profileNum = profileName.replace('profile', '');
 
-    if (!confirm(`⚠️ Are you sure you want to DELETE profile ${profileNum}?\n\nThis will:\n- Stop and remove the Docker container\n- Delete docker-compose.profile${profileNum}.yml\n\nThis action cannot be undone!`)) {
-        return;
-    }
+    showConfirm(
+        `Delete Profile ${profileNum}`,
+        `This will:\n- Stop and remove the Docker container\n- Delete docker-compose.profile${profileNum}.yml\n\nThis action cannot be undone!`,
+        async () => {
+            try {
+                const response = await fetch(`/api/delete-profile/${profileNum}`, { method: 'DELETE' });
+                const data = await response.json();
 
-    try {
-        const response = await fetch(`/api/delete-profile/${profileNum}`, { method: 'DELETE' });
-        const data = await response.json();
+                if (data.status === 'deleted' || data.status === 'partial') {
+                    if (data.errors && data.errors.length > 0) {
+                        showToast('Profile deleted with some errors', 'warning');
+                    } else {
+                        showToast('Profile deleted successfully', 'success');
+                    }
 
-        if (data.status === 'deleted' || data.status === 'partial') {
-            let message = '✅ Profile deleted:\n\n';
-            if (data.success) {
-                message += data.success.join('\n');
+                    // Reload everything
+                    setTimeout(() => {
+                        loadContainers();
+                        loadStats();
+                        loadAvailableProfiles();
+                    }, 1000);
+                } else {
+                    showToast('Error deleting profile: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting profile:', error);
+                showToast('Error deleting profile', 'error');
             }
-            if (data.errors && data.errors.length > 0) {
-                message += '\n\n⚠️ Errors:\n' + data.errors.join('\n');
-            }
-            alert(message);
-
-            // Reload everything
-            setTimeout(() => {
-                loadContainers();
-                loadStats();
-                loadAvailableProfiles();
-            }, 1000);
-        } else {
-            alert('❌ Error deleting profile: ' + (data.error || 'Unknown error'));
         }
-    } catch (error) {
-        console.error('Error deleting profile:', error);
-        alert('❌ Error deleting profile');
-    }
+    );
+}
+
+// Delete profile files only (for available profiles not yet started)
+async function deleteProfileFiles(profileNum, profileName) {
+    showConfirm(
+        `Delete Profile ${profileNum}`,
+        `This will delete:\n- Profile directory (profile${profileNum})\n- docker-compose.profile${profileNum}.yml (if exists)\n- All authentication data\n\nThis action cannot be undone!`,
+        async () => {
+            try {
+                const response = await fetch(`/api/delete-profile-files/${profileNum}`, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (data.status === 'deleted' || data.status === 'partial') {
+                    if (data.errors && data.errors.length > 0) {
+                        showToast('Profile files deleted with some errors', 'warning');
+                    } else {
+                        showToast('Profile files deleted successfully', 'success');
+                    }
+
+                    // Reload everything
+                    setTimeout(() => {
+                        loadContainers();
+                        loadStats();
+                        loadAvailableProfiles();
+                    }, 1000);
+                } else {
+                    showToast('Error deleting profile files: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting profile files:', error);
+                showToast('Error deleting profile files', 'error');
+            }
+        }
+    );
 }
 
 // Open create profile modal
@@ -387,7 +487,7 @@ async function createNewProfile() {
     const profileName = document.getElementById('profile-name-input').value.trim();
 
     if (!profileName) {
-        alert('⚠️ Please enter a profile name');
+        showToast('Please enter a profile name', 'warning');
         return;
     }
 
@@ -404,7 +504,7 @@ async function createNewProfile() {
 
         if (data.status === 'created') {
             closeCreateProfileModal();
-            alert(`✅ Profile "${data.profile_name}" created successfully!\n\nProfile number: ${data.profile_num}\n\nNext step: Authenticate this profile using VNC by running:\nPROFILE_DIR=./profile${data.profile_num} ./doauth.sh`);
+            showToast(`Profile "${data.profile_name}" created successfully!`, 'success');
 
             // Reload to show the new profile
             setTimeout(() => {
@@ -413,19 +513,159 @@ async function createNewProfile() {
                 loadAvailableProfiles();
             }, 500);
         } else {
-            alert('❌ Error creating profile: ' + (data.error || 'Unknown error'));
+            showToast('Error creating profile: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Error creating profile:', error);
-        alert('❌ Error creating profile');
+        showToast('Error creating profile', 'error');
+    }
+}
+
+// Profile Configuration
+let currentConfigProfileNum = null;
+let isEditMode = false;
+
+function openConfigModal(profileNum, profileName) {
+    currentConfigProfileNum = profileNum;
+    isEditMode = false;
+    document.getElementById('config-profile-name').textContent = profileName;
+
+    // Update button text for create mode
+    document.getElementById('config-save-text').textContent = 'Create Docker Compose';
+
+    document.getElementById('config-modal').classList.remove('hidden');
+
+    // Set default values for new profile
+    document.getElementById('config-cron').value = `0 ${2 + profileNum} * * *`;
+    document.getElementById('config-run-on-startup').checked = true;
+    document.getElementById('config-loglevel').value = 'info';
+    document.getElementById('config-workers').value = 6;
+    document.getElementById('config-albums').value = '';
+    document.getElementById('config-timezone').value = 'Europe/Rome';
+}
+
+async function editProfileConfig(profileName, displayName) {
+    // Extract profile number from profile name (e.g., "profile1" -> 1)
+    const profileNum = parseInt(profileName.replace('profile', ''));
+
+    currentConfigProfileNum = profileNum;
+    isEditMode = true;
+    document.getElementById('config-profile-name').textContent = displayName;
+
+    // Update button text for edit mode
+    document.getElementById('config-save-text').textContent = 'Update Configuration';
+
+    try {
+        // Load current configuration
+        const response = await fetch(`/api/get-config/${profileNum}`);
+        const config = await response.json();
+
+        if (config.error) {
+            showToast('Error loading configuration: ' + config.error, 'error');
+            return;
+        }
+
+        // Populate form with current values
+        document.getElementById('config-cron').value = config.cron_schedule || `0 ${2 + profileNum} * * *`;
+        document.getElementById('config-run-on-startup').checked = config.run_on_startup;
+        document.getElementById('config-loglevel').value = config.loglevel || 'info';
+        document.getElementById('config-workers').value = config.worker_count || 6;
+        document.getElementById('config-albums').value = config.albums || '';
+        document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
+
+        document.getElementById('config-modal').classList.remove('hidden');
+    } catch (error) {
+        console.error('Error loading config:', error);
+        showToast('Error loading configuration', 'error');
+    }
+}
+
+function closeConfigModal() {
+    document.getElementById('config-modal').classList.add('hidden');
+    currentConfigProfileNum = null;
+}
+
+async function saveConfiguration() {
+    const config = {
+        cron_schedule: document.getElementById('config-cron').value.trim(),
+        run_on_startup: document.getElementById('config-run-on-startup').checked,
+        loglevel: document.getElementById('config-loglevel').value,
+        worker_count: parseInt(document.getElementById('config-workers').value),
+        albums: document.getElementById('config-albums').value.trim(),
+        timezone: document.getElementById('config-timezone').value.trim(),
+        puid: 1000,
+        pgid: 1000
+    };
+
+    try {
+        const response = await fetch(`/api/create-compose/${currentConfigProfileNum}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'created') {
+            // Save profile number before closing modal
+            const profileNum = currentConfigProfileNum;
+
+            closeConfigModal();
+
+            if (isEditMode) {
+                // In edit mode: recreate the container to apply changes
+                showToast('Configuration updated! Recreating container...', 'info');
+
+                // Recreate the container with new configuration
+                (async () => {
+                    try {
+                        // Wait a bit before starting
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        // Use the recreate endpoint that stops+removes+starts with docker-compose
+                        const recreateResp = await fetch(`/api/recreate-profile/${profileNum}`, { method: 'POST' });
+                        const recreateData = await recreateResp.json();
+
+                        if (recreateData.status !== 'recreated') {
+                            throw new Error(recreateData.error || 'Failed to recreate container');
+                        }
+
+                        showToast('Container recreated with new configuration!', 'success');
+
+                        // Reload UI
+                        setTimeout(() => {
+                            loadContainers();
+                            loadStats();
+                            loadAvailableProfiles();
+                        }, 1000);
+                    } catch (error) {
+                        console.error('Error recreating container:', error);
+                        showToast('Configuration saved but failed to recreate container. Please stop and start manually.', 'warning');
+                    }
+                })();
+            } else {
+                // In create mode: automatically start the profile after creating compose file
+                showToast('Docker Compose created successfully. Starting container...', 'success');
+                setTimeout(() => startProfileFromGUI(profileNum), 500);
+            }
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error saving configuration:', error);
+        showToast('Error saving configuration', 'error');
     }
 }
 
 // VNC Authentication
 let currentAuthProfileNum = null;
+let currentAuthProfileName = null;
 
 function startVNCAuth(profileNum, profileName) {
     currentAuthProfileNum = profileNum;
+    currentAuthProfileName = profileName;
     document.getElementById('vnc-profile-name').textContent = profileName;
     document.getElementById('vnc-auth-modal').classList.remove('hidden');
 
@@ -437,6 +677,7 @@ function startVNCAuth(profileNum, profileName) {
 function closeVNCModal() {
     document.getElementById('vnc-auth-modal').classList.add('hidden');
     currentAuthProfileNum = null;
+    currentAuthProfileName = null;
 }
 
 async function startVNCContainer() {
@@ -455,48 +696,80 @@ async function startVNCContainer() {
             // Show VNC running UI
             document.getElementById('vnc-status').classList.add('hidden');
             document.getElementById('vnc-running').classList.remove('hidden');
+            showToast('VNC container started successfully', 'success');
         } else {
-            alert('❌ Error starting VNC: ' + (data.error || 'Unknown error'));
+            showToast('Error starting VNC: ' + (data.error || 'Unknown error'), 'error');
             startBtn.disabled = false;
             startBtn.innerHTML = '<i class="fas fa-play-circle"></i> Start VNC Container';
         }
     } catch (error) {
         console.error('Error starting VNC:', error);
-        alert('❌ Error starting VNC container');
+        showToast('Error starting VNC container', 'error');
         startBtn.disabled = false;
         startBtn.innerHTML = '<i class="fas fa-play-circle"></i> Start VNC Container';
     }
 }
 
 async function stopVNCAndSave() {
-    if (!confirm('⚠️ Have you completed the Google authentication in VNC?\n\nClick OK to stop VNC and save the authentication.')) {
-        return;
-    }
+    showConfirm(
+        'Save Authentication',
+        'Have you completed the Google authentication in VNC?\n\nClick Confirm to stop VNC and save the authentication.',
+        async () => {
+            // Find the "Stop VNC & Save" button and show spinner
+            const vncRunningDiv = document.getElementById('vnc-running');
+            const originalHTML = vncRunningDiv.innerHTML;
 
-    try {
-        const response = await fetch('/api/stop-auth', {
-            method: 'POST'
-        });
+            vncRunningDiv.innerHTML = `
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                    <p class="text-blue-900 font-bold mb-2 flex items-center gap-2">
+                        <i class="fas fa-spinner fa-spin"></i> Stopping VNC and saving authentication...
+                    </p>
+                    <p class="text-sm text-blue-800">
+                        Please wait, this may take a few seconds.
+                    </p>
+                </div>
+            `;
 
-        const data = await response.json();
+            try {
+                const response = await fetch('/api/stop-auth', {
+                    method: 'POST'
+                });
 
-        if (data.status === 'stopped') {
-            alert('✅ Authentication saved successfully!\n\nYou can now create a docker-compose and start the container.');
-            closeVNCModal();
+                const data = await response.json();
 
-            // Reload profiles
-            setTimeout(() => {
-                loadContainers();
-                loadStats();
-                loadAvailableProfiles();
-            }, 1000);
-        } else {
-            alert('❌ Error stopping VNC: ' + (data.error || 'Unknown error'));
+                if (data.status === 'stopped') {
+                    showToast('Authentication saved successfully! Opening configuration...', 'success');
+
+                    // Save profile info before closing VNC modal
+                    const profileNum = currentAuthProfileNum;
+                    const profileName = currentAuthProfileName;
+
+                    closeVNCModal();
+
+                    // Open configuration modal after a short delay
+                    setTimeout(() => {
+                        openConfigModal(profileNum, profileName);
+                    }, 500);
+
+                    // Reload profiles in background
+                    setTimeout(() => {
+                        loadContainers();
+                        loadStats();
+                        loadAvailableProfiles();
+                    }, 1000);
+                } else {
+                    // Restore original HTML on error
+                    vncRunningDiv.innerHTML = originalHTML;
+                    showToast('Error stopping VNC: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                // Restore original HTML on error
+                vncRunningDiv.innerHTML = originalHTML;
+                console.error('Error stopping VNC:', error);
+                showToast('Error stopping VNC container', 'error');
+            }
         }
-    } catch (error) {
-        console.error('Error stopping VNC:', error);
-        alert('❌ Error stopping VNC container');
-    }
+    );
 }
 
 // Handle Enter key in profile name input

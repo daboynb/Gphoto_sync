@@ -235,16 +235,44 @@ def get_host_workspace_path():
 
 @app.route('/api/create-compose/<int:profile_num>', methods=['POST'])
 def create_compose(profile_num):
-    """Create docker-compose file for a profile"""
+    """Create docker-compose file for a profile with custom configuration"""
     import os
+    from flask import request
+
+    # Get configuration from request body
+    config = request.get_json() or {}
 
     # Use absolute host paths to avoid Docker volume issues
     workspace_path = get_host_workspace_path()
 
+    # Extract configuration with defaults
+    cron_schedule = config.get('cron_schedule', f'0 {2 + profile_num} * * *')
+    run_on_startup = config.get('run_on_startup', True)
+    loglevel = config.get('loglevel', 'info')
+    worker_count = config.get('worker_count', 6)
+    albums = config.get('albums', '')
+    timezone = config.get('timezone', 'Europe/Rome')
+    puid = config.get('puid', 1000)
+    pgid = config.get('pgid', 1000)
+
+    # Build environment section
+    env_vars = [
+        f'      - PUID={puid}',
+        f'      - PGID={pgid}',
+        f'      - CRON_SCHEDULE={cron_schedule}',
+        f'      - RUN_ON_STARTUP={str(run_on_startup).lower()}',
+        f'      - LOGLEVEL={loglevel}',
+        f'      - TZ={timezone}',
+        f'      - WORKER_COUNT={worker_count}'
+    ]
+
+    # Add ALBUMS env var if specified
+    if albums and albums.strip() and albums.strip().upper() != 'ALL':
+        env_vars.append(f'      - ALBUMS={albums.strip()}')
+
     compose_content = f"""services:
   gphotos-sync-profile{profile_num}:
-    build:
-      context: {workspace_path}
+    image: gphotos-sync:latest
     container_name: gphotos-sync-profile{profile_num}
     restart: unless-stopped
     privileged: true
@@ -252,13 +280,7 @@ def create_compose(profile_num):
       - {workspace_path}/profile{profile_num}:/tmp/gphotos-cdp
       - {workspace_path}/photos{profile_num}:/download
     environment:
-      - PUID=1000
-      - PGID=1000
-      - CRON_SCHEDULE=0 {2 + profile_num} * * *
-      - RUN_ON_STARTUP=true
-      - LOGLEVEL=info
-      - TZ=Europe/Rome
-      - WORKER_COUNT=6
+{chr(10).join(env_vars)}
     networks:
       - gphotos-network
 
@@ -276,8 +298,66 @@ networks:
         return jsonify({
             'status': 'created',
             'file': f'docker-compose.profile{profile_num}.yml',
-            'message': f'Docker compose file created for profile {profile_num}'
+            'message': f'Docker compose file created for profile {profile_num}',
+            'config': config
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get-config/<int:profile_num>', methods=['GET'])
+def get_config(profile_num):
+    """Get current configuration from docker-compose file"""
+    import yaml
+
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+
+    if not os.path.exists(compose_file):
+        return jsonify({'error': 'Docker compose file not found'}), 404
+
+    try:
+        with open(compose_file, 'r') as f:
+            compose_data = yaml.safe_load(f)
+
+        # Extract environment variables
+        service_name = f'gphotos-sync-profile{profile_num}'
+        env_vars = compose_data.get('services', {}).get(service_name, {}).get('environment', [])
+
+        # Parse environment variables
+        config = {
+            'cron_schedule': '',
+            'run_on_startup': True,
+            'loglevel': 'info',
+            'worker_count': 6,
+            'albums': '',
+            'timezone': 'Europe/Rome',
+            'puid': 1000,
+            'pgid': 1000
+        }
+
+        for env in env_vars:
+            if isinstance(env, str) and '=' in env:
+                key, val = env.split('=', 1)
+                key = key.strip()
+                val = val.strip()
+
+                if key == 'CRON_SCHEDULE':
+                    config['cron_schedule'] = val
+                elif key == 'RUN_ON_STARTUP':
+                    config['run_on_startup'] = val.lower() == 'true'
+                elif key == 'LOGLEVEL':
+                    config['loglevel'] = val
+                elif key == 'WORKER_COUNT':
+                    config['worker_count'] = int(val)
+                elif key == 'ALBUMS':
+                    config['albums'] = val
+                elif key == 'TZ':
+                    config['timezone'] = val
+                elif key == 'PUID':
+                    config['puid'] = int(val)
+                elif key == 'PGID':
+                    config['pgid'] = int(val)
+
+        return jsonify(config)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -317,6 +397,86 @@ def start_profile(profile_num):
         return jsonify({'error': 'Command timed out'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stop-profile/<int:profile_num>', methods=['POST'])
+def stop_profile(profile_num):
+    """Stop and remove a profile container directly using docker commands"""
+    container_name = f'gphotos-sync-profile{profile_num}'
+
+    try:
+        # Get the container
+        container = docker_client.containers.get(container_name)
+
+        # Stop the container
+        container.stop(timeout=10)
+
+        # Remove the container
+        container.remove()
+
+        return jsonify({
+            'status': 'stopped',
+            'message': f'Profile {profile_num} stopped and removed successfully'
+        })
+
+    except docker.errors.NotFound:
+        return jsonify({
+            'status': 'stopped',
+            'message': f'Container {container_name} not found (already removed)'
+        })
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to stop profile {profile_num}',
+            'details': str(e)
+        }), 500
+
+@app.route('/api/recreate-profile/<int:profile_num>', methods=['POST'])
+def recreate_profile(profile_num):
+    """Stop, remove and recreate a profile container using docker-compose to apply new config"""
+    import subprocess
+
+    container_name = f'gphotos-sync-profile{profile_num}'
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+
+    if not os.path.exists(compose_file):
+        return jsonify({'error': f'docker-compose.profile{profile_num}.yml not found'}), 404
+
+    try:
+        # Step 1: Stop and remove the container using Docker API (doesn't affect other containers)
+        try:
+            container = docker_client.containers.get(container_name)
+            container.stop(timeout=10)
+            container.remove()
+        except docker.errors.NotFound:
+            pass  # Container already removed, that's fine
+
+        # Step 2: Start the container using docker-compose (reads new config from yaml)
+        result = subprocess.run(
+            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--no-recreate'],
+            cwd='/workspace',
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'recreated',
+                'message': f'Profile {profile_num} recreated with new configuration',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': f'Failed to recreate profile {profile_num}',
+                'output': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Command timed out'}), 500
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to recreate profile {profile_num}',
+            'details': str(e)
+        }), 500
 
 @app.route('/api/create-new-profile', methods=['POST'])
 def create_new_profile():
@@ -541,6 +701,61 @@ def delete_profile(profile_num):
             return jsonify({
                 'status': 'deleted',
                 'message': f'Profile {profile_num} deleted successfully',
+                'success': success_messages
+            })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'success': success_messages,
+            'errors': errors
+        }), 500
+
+@app.route('/api/delete-profile-files/<int:profile_num>', methods=['DELETE'])
+def delete_profile_files(profile_num):
+    """Delete only profile files (docker-compose, metadata, profile directory) without touching containers"""
+    import shutil
+
+    compose_file = f'/workspace/docker-compose.profile{profile_num}.yml'
+    profile_dir = f'/workspace/profile{profile_num}'
+
+    errors = []
+    success_messages = []
+
+    try:
+        # Step 1: Delete docker-compose file if it exists
+        if os.path.exists(compose_file):
+            try:
+                os.remove(compose_file)
+                success_messages.append(f'File docker-compose.profile{profile_num}.yml deleted')
+            except Exception as e:
+                errors.append(f'Error deleting compose file: {str(e)}')
+        else:
+            success_messages.append(f'Compose file not found')
+
+        # Step 2: Delete profile directory if it exists
+        if os.path.exists(profile_dir):
+            try:
+                shutil.rmtree(profile_dir)
+                success_messages.append(f'Profile directory profile{profile_num} deleted')
+            except Exception as e:
+                errors.append(f'Error deleting profile directory: {str(e)}')
+        else:
+            success_messages.append(f'Profile directory not found')
+
+        # Return response
+        if errors:
+            return jsonify({
+                'status': 'partial',
+                'message': 'Profile files partially deleted with some errors',
+                'success': success_messages,
+                'errors': errors
+            }), 207  # Multi-Status
+        else:
+            return jsonify({
+                'status': 'deleted',
+                'message': f'Profile {profile_num} files deleted successfully',
                 'success': success_messages
             })
 
