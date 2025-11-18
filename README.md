@@ -34,33 +34,6 @@ Open **http://localhost:8080** in your browser
 
 Your profile will start automatically and begin syncing!
 
----
-
-## Web GUI Features
-
-**Access at http://localhost:8080**
-
-### Profile Management
-- ➕ **Create Profile**: Add new Google accounts with custom names
-- 🔑 **Authenticate**: Login via VNC browser interface
-- ⚙️ **Configure**: Set sync schedule, workers, albums, and more
-- ▶️ **Start/Stop/Restart**: Control individual profile containers
-- 🗑️ **Delete**: Remove profiles and their containers
-
-### Monitoring
-- 📊 **Real-time Status**: View running/stopped containers at a glance
-- ⏰ **Next Sync Time**: Countdown to next scheduled sync
-- 📜 **Live Logs**: Stream logs in real-time with auto-scroll
-- 📥 **Download Logs**: Export logs for debugging
-
-### Container Information
-- Container ID and status
-- Sync schedule (cron expression)
-- Worker count and startup behavior
-- Next run time and countdown
-
----
-
 ## Multiple Google Accounts
 
 The Web GUI makes managing multiple accounts easy:
@@ -168,58 +141,6 @@ environment:
 6. **File Organization**: Each photo gets its own folder (supports Live Photos and edited versions)
 7. **Scheduled Syncs**: Runs automatically based on cron schedule
 8. **EXIF Preservation**: File modification dates synced to photo's original date
-
-### Directory Structure
-
-```
-Gphoto_sync/
-├── profiles/
-│   ├── family/            # Chrome session for "Family Photos" profile
-│   ├── work/              # Chrome session for "Work Account" profile
-│   └── vacation/          # Chrome session for "Vacation" profile
-├── photos/
-│   ├── family/            # Photos from Family profile
-│   │   ├── 2024-01-01/
-│   │   │   └── IMG_1234/
-│   │   │       ├── IMG_1234.jpg
-│   │   │       └── IMG_1234.MOV (if Live Photo)
-│   │   └── .lastdone      # Sync progress tracking
-│   ├── work/              # Photos from Work profile
-│   └── vacation/          # Photos from Vacation profile
-├── docker-compose.family.yml    # Family profile configuration
-├── docker-compose.work.yml      # Work profile configuration
-└── docker-compose.vacation.yml  # Vacation profile configuration
-```
-
----
-
-## Troubleshooting
-
-### Profile not syncing at startup
-- Make sure "Run on Startup" is enabled in profile configuration
-- Check logs: Container logs will show "running initial sync on startup..."
-- Edit the profile configuration to toggle the setting
-
-### VNC authentication stuck
-- Make sure to click "Start VNC Container" button first
-- Wait 5-10 seconds for VNC to start
-- If VNC is slow, refresh the VNC tab (http://localhost:6080)
-
-### Container won't start after config change
-- Configuration changes require container recreation
-- The Web GUI automatically recreates containers when you edit configuration
-- Alternatively, stop and start the profile manually
-
-### Photos not appearing in photos directory
-- Check container logs for errors
-- Verify authentication is successful (check for "authentication successful!" in logs)
-- Ensure PUID/PGID match your user (run `id -u` and `id -g`)
-
-### Sync is slow
-- Increase worker count (default: 6, try 10-15)
-- Check network connection and Google Photos API rate limits
-
----
 
 ## Credits & License
 
