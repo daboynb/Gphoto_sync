@@ -729,6 +729,12 @@ async function startVNCContainer() {
             // Show VNC running UI
             document.getElementById('vnc-status').classList.add('hidden');
             document.getElementById('vnc-running').classList.remove('hidden');
+
+            // Set VNC link dynamically using current hostname
+            const vncLink = document.getElementById('vnc-link');
+            const currentHost = window.location.hostname;
+            vncLink.href = `http://${currentHost}:6080`;
+
             showToast('VNC container started successfully', 'success');
         } else {
             showToast('Error starting VNC: ' + (data.error || 'Unknown error'), 'error');
