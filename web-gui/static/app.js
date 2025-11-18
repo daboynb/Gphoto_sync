@@ -560,7 +560,6 @@ function openConfigModal(profileNum, profileName) {
     // Advanced options defaults
     document.getElementById('config-puid').value = 1000;
     document.getElementById('config-pgid').value = 1000;
-    document.getElementById('config-legacy-mode').checked = false;
     document.getElementById('config-restart-schedule').value = '';
     document.getElementById('config-healthcheck-url').value = '';
 
@@ -601,7 +600,6 @@ async function editProfileConfig(profileName, displayName) {
         // Advanced options
         document.getElementById('config-puid').value = config.puid || 1000;
         document.getElementById('config-pgid').value = config.pgid || 1000;
-        document.getElementById('config-legacy-mode').checked = (config.gphotos_cdp_args || '').includes('-legacy');
         document.getElementById('config-restart-schedule').value = config.restart_schedule || '';
         document.getElementById('config-healthcheck-url').value = config.healthcheck_url || '';
 
@@ -634,7 +632,6 @@ async function saveConfiguration() {
         // Advanced options
         puid: parseInt(document.getElementById('config-puid').value),
         pgid: parseInt(document.getElementById('config-pgid').value),
-        legacy_mode: document.getElementById('config-legacy-mode').checked,
         restart_schedule: document.getElementById('config-restart-schedule').value.trim(),
         healthcheck_url: document.getElementById('config-healthcheck-url').value.trim()
     };

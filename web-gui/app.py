@@ -256,7 +256,6 @@ def create_compose(profile_num):
     pgid = config.get('pgid', 1000)
 
     # Advanced options
-    legacy_mode = config.get('legacy_mode', False)
     restart_schedule = config.get('restart_schedule', '')
     healthcheck_url = config.get('healthcheck_url', '')
 
@@ -274,10 +273,6 @@ def create_compose(profile_num):
     # Add ALBUMS env var if specified
     if albums and albums.strip() and albums.strip().upper() != 'ALL':
         env_vars.append(f'      - ALBUMS={albums.strip()}')
-
-    # Add legacy mode if enabled
-    if legacy_mode:
-        env_vars.append(f'      - GPHOTOS_CDP_ARGS=-legacy')
 
     # Add restart schedule if specified
     if restart_schedule and restart_schedule.strip():
@@ -361,7 +356,6 @@ def get_config(profile_num):
             'timezone': 'Europe/Rome',
             'puid': 1000,
             'pgid': 1000,
-            'legacy_mode': False,
             'restart_schedule': '',
             'healthcheck_url': ''
         }
@@ -392,8 +386,6 @@ def get_config(profile_num):
                     config['puid'] = int(val)
                 elif key == 'PGID':
                     config['pgid'] = int(val)
-                elif key == 'GPHOTOS_CDP_ARGS':
-                    config['legacy_mode'] = '-legacy' in val
                 elif key == 'RESTART_SCHEDULE':
                     config['restart_schedule'] = val
                 elif key == 'HEALTHCHECK_HOST':

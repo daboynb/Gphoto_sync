@@ -151,22 +151,10 @@ For advanced users who prefer editing docker-compose files directly, you can als
 environment:
   - PUID=1000                          # User ID for file ownership
   - PGID=1000                          # Group ID for file ownership
-  - GPHOTOS_CDP_ARGS=-legacy           # Use legacy mode for faster initial sync
   - RESTART_SCHEDULE=0 0 1 * *         # Delete .lastdone files (monthly restart)
   - HEALTHCHECK_HOST=https://hc-ping.com
   - HEALTHCHECK_ID=your-healthcheck-id
 ```
-
-### Legacy Mode for Initial Sync
-
-If you have thousands of photos, use legacy mode for the first sync:
-
-```yaml
-environment:
-  - GPHOTOS_CDP_ARGS=-legacy
-```
-
-**Note**: Legacy mode is faster for initial downloads but slower for checking updates. Switch back to normal mode after the first sync completes.
 
 ---
 
@@ -223,7 +211,6 @@ Gphoto_sync/
 
 ### Sync is slow
 - Increase worker count (default: 6, try 10-15)
-- For initial sync of large libraries, consider legacy mode
 - Check network connection and Google Photos API rate limits
 
 ---
