@@ -1,37 +1,20 @@
 # Google Photos Sync
 
-Automatically download all your photos from Google Photos.
+Automatically download all your photos from Google Photos using Docker Compose.
 
-## Quick Start
+## Quick Start (Single Profile)
 
-### 1. First Time Setup (Authentication)
-
-Clone this repository and run the authentication script:
+### 1. Authentication
 
 ```bash
 git clone <this-repo>
 cd Gphoto_sync
-./doauth.sh
+./doauth.sh  # Opens VNC at http://localhost:6080 - login with your Google account
 ```
 
-This will:
-- Open a VNC window at `http://localhost:6080`
-- Let you login to your Google account
-- Save your login session in the `./profile` folder
+### 2. Start Automatic Sync
 
-### 2. Test It Works
-
-Run a test sync to make sure everything is working:
-
-```bash
-./testsync.sh
-```
-
-Your photos will be downloaded to the `./photos` folder.
-
-### 3. Setup Automatic Sync (Optional)
-
-Use Docker Compose to run syncs automatically on a schedule:
+Create `docker-compose.yml`:
 
 ```yaml
 services:
@@ -42,15 +25,83 @@ services:
     restart: unless-stopped
     privileged: true
     volumes:
-      - ./profile:/tmp/gphotos-cdp
-      - ./photos:/download
+      - ./profile1:/tmp/gphotos-cdp
+      - ./photos1:/download
+    environment:
+      - PUID=1000              # Your user ID (run: id -u)
+      - PGID=1000              # Your group ID (run: id -g)
+      - CRON_SCHEDULE=0 2 * * *  # Daily at 2 AM
+      - RUN_ON_STARTUP=true    # Sync immediately on startup
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
+```
+
+Start sync:
+```bash
+docker compose up -d
+docker compose logs -f  # Watch logs
+```
+
+---
+
+## Multiple Google Accounts
+
+### 1. Create Profiles
+
+```bash
+./doauth.sh  # Creates profile1 → login first account
+./doauth.sh  # Creates profile2 → login second account
+./doauth.sh  # Creates profile3 → login third account (optional)
+```
+
+### 2. Configure docker-compose.yml
+
+```yaml
+services:
+  gphotos-sync-profile1:
+    build:
+      context: .
+    container_name: gphotos-sync-profile1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./profile1:/tmp/gphotos-cdp
+      - ./photos1:/download
     environment:
       - PUID=1000
       - PGID=1000
-      - CRON_SCHEDULE=0 2 * * *  # Run every day at 2 AM
+      - CRON_SCHEDULE=0 2 * * *
+      - RUN_ON_STARTUP=true
       - LOGLEVEL=info
-      - TZ=Europe/Berlin
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
+
+  gphotos-sync-profile2:
+    build:
+      context: .
+    container_name: gphotos-sync-profile2
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./profile2:/tmp/gphotos-cdp
+      - ./photos2:/download
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 3 * * *  # 3 AM (1 hour after profile1)
+      - RUN_ON_STARTUP=true
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
 ```
+
+Start all:
+```bash
+docker compose up -d
+```
+
+Result: `profile1/` → `photos1/`, `profile2/` → `photos2/`
 
 ---
 
@@ -84,6 +135,7 @@ To sync both albums AND your entire library, add `ALL` to the list:
 ### Other Options
 
 - **PUID/PGID**: User/group ID for file permissions (run `id -u` and `id -g` to find yours)
+- **RUN_ON_STARTUP**: Set to `true` to sync immediately on container startup, then continue with cron (default: `false`)
 - **LOGLEVEL**: `debug`, `info`, `warn`, or `error`
 - **WORKER_COUNT**: Number of parallel downloads (default: 6)
 

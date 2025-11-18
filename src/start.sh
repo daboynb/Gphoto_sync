@@ -18,7 +18,13 @@ adduser abc --uid "${PUID}" --gid "${PGID}" --disabled-password --gecos "" --qui
 
 info "running with user uid: $(id -u abc) and user gid: $(id -g abc)"
 
-chown abc:abc /app
+# Ensure download and profile directories exist and have correct permissions
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-/download}"
+PROFILE_DIR="${PROFILE_DIR:-/tmp/gphotos-cdp}"
+
+mkdir -p "$DOWNLOAD_DIR" "$PROFILE_DIR"
+chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app
+chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR"
 
 if [[ "$1" == 'no-cron' ]]; then
     sudo -E -u abc sh /app/sync.sh
@@ -31,6 +37,13 @@ else
     chmod a+rw $LOGFIFO
 
     (while true; do cat "$LOGFIFO" || sleep 0.2; done) &
+
+    # Run sync immediately on startup if RUN_ON_STARTUP is set
+    if [[ "$RUN_ON_STARTUP" == "true" ]] || [[ "$RUN_ON_STARTUP" == "1" ]]; then
+        info "running initial sync on startup..."
+        sudo -E -u abc sh /app/sync.sh
+        info "initial sync completed, starting cron scheduler..."
+    fi
 
     CRON="CHROMIUM_USER_FLAGS='--no-sandbox'"
     CRON="$CRON\nHEALTHCHECK_ID='$HEALTHCHECK_ID'"
