@@ -1,0 +1,34 @@
+services:
+  gphotos-sync-profile1:
+    build:
+      context: .
+    container_name: gphotos-sync-profile1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./profile1:/tmp/gphotos-cdp
+      - ./photos1:/download
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 2 * * *  # Ogni giorno alle 2:00 AM
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
+
+  gphotos-sync-profile2:
+    build:
+      context: .
+    container_name: gphotos-sync-profile2
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./profile2:/tmp/gphotos-cdp
+      - ./photos2:/download
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON_SCHEDULE=0 3 * * *  # Ogni giorno alle 3:00 AM (1 ora dopo il primo)
+      - LOGLEVEL=info
+      - TZ=Europe/Rome
+      - WORKER_COUNT=6
