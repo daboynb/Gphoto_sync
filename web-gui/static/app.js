@@ -156,7 +156,7 @@ async function loadContainers() {
                                     class="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 text-sm">
                                 <i class="fas fa-cog"></i> Edit Config
                             </button>
-                            <button onclick="deleteProfile('${container.profile}')"
+                            <button onclick="deleteProfile('${container.profile}', '${container.display_name || container.name}')"
                                     class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 text-sm">
                                 <i class="fas fa-trash"></i> Delete
                             </button>
@@ -348,17 +348,17 @@ async function loadAvailableProfiles() {
                                     </div>
                                     <div class="flex gap-2">
                                         ${!profile.has_compose ? `
-                                            <button onclick="startVNCAuth(${profile.number}, '${profile.display_name || profile.name}')"
+                                            <button onclick="startVNCAuth('${profile.name}', '${profile.display_name || profile.name}')"
                                                     class="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600">
                                                 <i class="fas fa-key"></i> Authenticate
                                             </button>
                                         ` : `
-                                            <button onclick="startProfileFromGUI(${profile.number})"
+                                            <button onclick="startProfileFromGUI('${profile.name}')"
                                                     class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">
                                                 <i class="fas fa-play"></i> Start
                                             </button>
                                         `}
-                                        <button onclick="deleteProfileFiles(${profile.number}, '${profile.display_name || profile.name}')"
+                                        <button onclick="deleteProfileFiles('${profile.name}', '${profile.display_name || profile.name}')"
                                                 class="px-3 py-1 bg-gray-700 text-white text-sm rounded hover:bg-gray-800">
                                             <i class="fas fa-trash"></i> Delete
                                         </button>
@@ -378,9 +378,9 @@ async function loadAvailableProfiles() {
 // Note: createCompose is replaced by openConfigModal + saveConfiguration
 
 // Start profile directly from GUI
-async function startProfileFromGUI(profileNum) {
+async function startProfileFromGUI(profileName) {
     try {
-        const response = await fetch(`/api/start-profile/${profileNum}`, { method: 'POST' });
+        const response = await fetch(`/api/start-profile/${profileName}`, { method: 'POST' });
         const data = await response.json();
 
         if (data.status === 'started') {
@@ -400,16 +400,13 @@ async function startProfileFromGUI(profileNum) {
 }
 
 // Delete profile (container + compose file) - for running containers
-async function deleteProfile(profileName) {
-    // Extract profile number from name (e.g., "profile1" -> "1")
-    const profileNum = profileName.replace('profile', '');
-
+async function deleteProfile(profileName, displayName) {
     showConfirm(
-        `Delete Profile ${profileNum}`,
-        `This will:\n- Stop and remove the Docker container\n- Delete docker-compose.profile${profileNum}.yml\n\nThis action cannot be undone!`,
+        `Delete Profile`,
+        `This will:\n- Stop and remove the Docker container for "${displayName}"\n- Delete docker-compose.${profileName}.yml\n\nThis action cannot be undone!`,
         async () => {
             try {
-                const response = await fetch(`/api/delete-profile/${profileNum}`, { method: 'DELETE' });
+                const response = await fetch(`/api/delete-profile/${profileName}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.status === 'deleted' || data.status === 'partial') {
@@ -437,13 +434,13 @@ async function deleteProfile(profileName) {
 }
 
 // Delete profile files only (for available profiles not yet started)
-async function deleteProfileFiles(profileNum, profileName) {
+async function deleteProfileFiles(profileName, displayName) {
     showConfirm(
-        `Delete Profile ${profileNum}`,
-        `This will delete:\n- Profile directory (profile${profileNum})\n- docker-compose.profile${profileNum}.yml (if exists)\n- All authentication data\n\nThis action cannot be undone!`,
+        `Delete Profile`,
+        `This will delete:\n- Profile directory (profiles/${profileName})\n- docker-compose.${profileName}.yml (if exists)\n- All authentication data for "${displayName}"\n\nThis action cannot be undone!`,
         async () => {
             try {
-                const response = await fetch(`/api/delete-profile-files/${profileNum}`, { method: 'DELETE' });
+                const response = await fetch(`/api/delete-profile-files/${profileName}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.status === 'deleted' || data.status === 'partial') {
@@ -539,10 +536,10 @@ function toggleAdvancedOptions() {
     }
 }
 
-function openConfigModal(profileNum, profileName) {
-    currentConfigProfileNum = profileNum;
+function openConfigModal(profileName, displayName) {
+    currentConfigProfileNum = profileName; // Store profile name instead of number
     isEditMode = false;
-    document.getElementById('config-profile-name').textContent = profileName;
+    document.getElementById('config-profile-name').textContent = displayName;
 
     // Update button text for create mode
     document.getElementById('config-save-text').textContent = 'Create Docker Compose';
@@ -550,7 +547,7 @@ function openConfigModal(profileNum, profileName) {
     document.getElementById('config-modal').classList.remove('hidden');
 
     // Set default values for new profile
-    document.getElementById('config-cron').value = `0 ${2 + profileNum} * * *`;
+    document.getElementById('config-cron').value = '0 3 * * *';
     document.getElementById('config-run-on-startup').checked = true;
     document.getElementById('config-loglevel').value = 'info';
     document.getElementById('config-workers').value = 6;
@@ -569,10 +566,7 @@ function openConfigModal(profileNum, profileName) {
 }
 
 async function editProfileConfig(profileName, displayName) {
-    // Extract profile number from profile name (e.g., "profile1" -> 1)
-    const profileNum = parseInt(profileName.replace('profile', ''));
-
-    currentConfigProfileNum = profileNum;
+    currentConfigProfileNum = profileName; // Store profile name directly
     isEditMode = true;
     document.getElementById('config-profile-name').textContent = displayName;
 
@@ -581,7 +575,7 @@ async function editProfileConfig(profileName, displayName) {
 
     try {
         // Load current configuration
-        const response = await fetch(`/api/get-config/${profileNum}`);
+        const response = await fetch(`/api/get-config/${profileName}`);
         const config = await response.json();
 
         if (config.error) {
@@ -590,7 +584,7 @@ async function editProfileConfig(profileName, displayName) {
         }
 
         // Populate form with current values
-        document.getElementById('config-cron').value = config.cron_schedule || `0 ${2 + profileNum} * * *`;
+        document.getElementById('config-cron').value = config.cron_schedule || '0 3 * * *';
         document.getElementById('config-run-on-startup').checked = config.run_on_startup;
         document.getElementById('config-loglevel').value = config.loglevel || 'info';
         document.getElementById('config-workers').value = config.worker_count || 6;
@@ -648,8 +642,8 @@ async function saveConfiguration() {
         const data = await response.json();
 
         if (data.status === 'created') {
-            // Save profile number before closing modal
-            const profileNum = currentConfigProfileNum;
+            // Save profile name before closing modal
+            const profileName = currentConfigProfileNum;
 
             closeConfigModal();
 
@@ -664,7 +658,7 @@ async function saveConfiguration() {
                         await new Promise(resolve => setTimeout(resolve, 500));
 
                         // Use the recreate endpoint that stops+removes+starts with docker-compose
-                        const recreateResp = await fetch(`/api/recreate-profile/${profileNum}`, { method: 'POST' });
+                        const recreateResp = await fetch(`/api/recreate-profile/${profileName}`, { method: 'POST' });
                         const recreateData = await recreateResp.json();
 
                         if (recreateData.status !== 'recreated') {
@@ -687,7 +681,7 @@ async function saveConfiguration() {
             } else {
                 // In create mode: automatically start the profile after creating compose file
                 showToast('Docker Compose created successfully. Starting container...', 'success');
-                setTimeout(() => startProfileFromGUI(profileNum), 500);
+                setTimeout(() => startProfileFromGUI(profileName), 500);
             }
         } else {
             showToast('Error: ' + (data.error || 'Unknown error'), 'error');
@@ -702,10 +696,10 @@ async function saveConfiguration() {
 let currentAuthProfileNum = null;
 let currentAuthProfileName = null;
 
-function startVNCAuth(profileNum, profileName) {
-    currentAuthProfileNum = profileNum;
-    currentAuthProfileName = profileName;
-    document.getElementById('vnc-profile-name').textContent = profileName;
+function startVNCAuth(profileName, displayName) {
+    currentAuthProfileNum = profileName; // Store profile name instead of number
+    currentAuthProfileName = displayName;
+    document.getElementById('vnc-profile-name').textContent = displayName;
     document.getElementById('vnc-auth-modal').classList.remove('hidden');
 
     // Reset UI
@@ -780,14 +774,14 @@ async function stopVNCAndSave() {
                     showToast('Authentication saved successfully! Opening configuration...', 'success');
 
                     // Save profile info before closing VNC modal
-                    const profileNum = currentAuthProfileNum;
-                    const profileName = currentAuthProfileName;
+                    const profileName = currentAuthProfileNum; // This is the profile name (e.g., "family")
+                    const displayName = currentAuthProfileName; // This is the display name (e.g., "Family Photos")
 
                     closeVNCModal();
 
                     // Open configuration modal after a short delay
                     setTimeout(() => {
-                        openConfigModal(profileNum, profileName);
+                        openConfigModal(profileName, displayName);
                     }, 500);
 
                     // Reload profiles in background

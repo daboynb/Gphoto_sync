@@ -67,13 +67,13 @@ The Web GUI makes managing multiple accounts easy:
 
 1. **Create multiple profiles** with different Google accounts
 2. **Each profile syncs independently** with its own schedule
-3. **Files are organized separately**: `photos1/`, `photos2/`, `photos3/`, etc.
+3. **Files are organized separately**: `photos/personal/`, `photos/work/`, `photos/family/`, etc.
 4. **Manage everything from one dashboard**
 
 Example setup:
-- **Profile 1** "Personal" → syncs daily at 2 AM → 6 workers
-- **Profile 2** "Work" → syncs every 6 hours → 3 workers
-- **Profile 3** "Family" → syncs on startup + daily → entire library
+- **personal** "Personal Photos" → syncs daily at 2 AM → 6 workers
+- **work** "Work Account" → syncs every 6 hours → 3 workers
+- **family** "Family Memories" → syncs on startup + daily → entire library
 
 ---
 
@@ -173,16 +173,22 @@ environment:
 
 ```
 Gphoto_sync/
-├── profile1/              # Chrome session for account 1
-├── profile2/              # Chrome session for account 2
-├── photos1/               # Photos from account 1
-│   ├── 2024-01-01/
-│   │   └── IMG_1234/
-│   │       ├── IMG_1234.jpg
-│   │       └── IMG_1234.MOV (if Live Photo)
-│   └── .lastdone          # Sync progress tracking
-├── photos2/               # Photos from account 2
-└── docker-compose.profile1.yml  # Profile 1 configuration
+├── profiles/
+│   ├── family/            # Chrome session for "Family Photos" profile
+│   ├── work/              # Chrome session for "Work Account" profile
+│   └── vacation/          # Chrome session for "Vacation" profile
+├── photos/
+│   ├── family/            # Photos from Family profile
+│   │   ├── 2024-01-01/
+│   │   │   └── IMG_1234/
+│   │   │       ├── IMG_1234.jpg
+│   │   │       └── IMG_1234.MOV (if Live Photo)
+│   │   └── .lastdone      # Sync progress tracking
+│   ├── work/              # Photos from Work profile
+│   └── vacation/          # Photos from Vacation profile
+├── docker-compose.family.yml    # Family profile configuration
+├── docker-compose.work.yml      # Work profile configuration
+└── docker-compose.vacation.yml  # Vacation profile configuration
 ```
 
 ---

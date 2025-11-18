@@ -3,4 +3,4 @@
 /profile*
 CLAUDE.md
 /photos*
-docker-compose.profile*
+*.yml
