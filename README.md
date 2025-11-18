@@ -1,5 +1,7 @@
 # Google Photos Sync
 
+**This is a beta, expect some bugs!**
+
 Automatically download all your photos from Google Photos using Docker Compose with an intuitive Web GUI for managing multiple accounts.
 
 ## Quick Start (Web GUI)
@@ -23,13 +25,7 @@ Open **http://localhost:8080** in your browser
 3. Click **"Authenticate"** → VNC opens at http://localhost:6080
 4. In VNC, double-click `open-chrome.sh` and login to Google Photos
 5. Return to Web GUI and click **"Stop VNC & Save"**
-6. Configure sync settings:
-   - **Cron Schedule**: When to sync (e.g., `0 3 * * *` = daily at 3 AM)
-   - **Run on Startup**: Sync immediately when container starts
-   - **Log Level**: Debug, Info, Warning, or Error
-   - **Parallel Downloads**: Number of concurrent downloads (1-20, default: 6)
-   - **Albums**: Leave empty for entire library, or specify album IDs
-   - **Timezone**: Your timezone (e.g., Europe/Rome, America/New_York)
+6. Configure sync settings
 7. Click **"Create Docker Compose"**
 
 Your profile will start automatically and begin syncing!
@@ -42,25 +38,7 @@ Your profile will start automatically and begin syncing!
 
 ---
 
-## Multiple Google Accounts
-
-The Web GUI makes managing multiple accounts easy:
-
-1. **Create multiple profiles** with different Google accounts
-2. **Each profile syncs independently** with its own schedule
-3. **Files are organized separately**: `photos/personal/`, `photos/work/`, `photos/family/`, etc.
-4. **Manage everything from one dashboard**
-
-Example setup:
-- **personal** "Personal Photos" → syncs daily at 2 AM → 6 workers
-- **work** "Work Account" → syncs every 6 hours → 3 workers
-- **family** "Family Memories" → syncs on startup + daily → entire library
-
----
-
 ## Configuration Options (Web GUI)
-
-All settings can be configured through the Web GUI when creating or editing a profile:
 
 ### Cron Schedule
 **When to run automatic syncs**
@@ -78,8 +56,6 @@ Format: `minute hour day month weekday`
 
 - ✅ **Enabled**: Runs sync on container startup, then follows cron schedule
 - ❌ **Disabled**: Only syncs according to cron schedule
-
-Useful for testing or ensuring you have the latest photos after a restart.
 
 ### Log Level
 **Amount of detail in logs**
@@ -121,34 +97,6 @@ Examples:
 Ensures syncs run at the correct local time.
 
 ---
-
-## Advanced Configuration (Manual)
-
-For advanced users who prefer editing docker-compose files directly, you can also configure profiles manually:
-
-### Additional Environment Variables
-
-```yaml
-environment:
-  - PUID=1000                          # User ID for file ownership
-  - PGID=1000                          # Group ID for file ownership
-  - RESTART_SCHEDULE=0 0 1 * *         # Delete .lastdone files (monthly restart)
-  - HEALTHCHECK_HOST=https://hc-ping.com
-  - HEALTHCHECK_ID=your-healthcheck-id
-```
-
----
-
-## How It Works
-
-1. **Authentication**: Login to Google Photos via VNC browser (one-time per profile)
-2. **Profile Storage**: Chrome session saved to `profile1/`, `profile2/`, etc.
-3. **First Sync**: Downloads all photos to `photos1/`, `photos2/`, etc.
-4. **Incremental Syncs**: Only downloads new photos (skips existing ones)
-5. **Deleted Photos**: If deleted from Google Photos, won't be deleted locally (tracked in `.removed` file)
-6. **File Organization**: Each photo gets its own folder (supports Live Photos and edited versions)
-7. **Scheduled Syncs**: Runs automatically based on cron schedule
-8. **EXIF Preservation**: File modification dates synced to photo's original date
 
 ## Credits & License
 
