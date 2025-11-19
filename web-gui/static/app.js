@@ -196,6 +196,46 @@ async function loadStats() {
     }
 }
 
+// Prettify JSON logs
+function prettifyLogLine(line) {
+    // Check if line contains JSON
+    const jsonMatch = line.match(/\{.*\}/);
+    if (!jsonMatch) return line;
+
+    try {
+        const json = JSON.parse(jsonMatch[0]);
+
+        // Extract timestamp prefix (before JSON)
+        const prefix = line.substring(0, line.indexOf('{'));
+
+        // Format: [timestamp] level: message
+        let formatted = '';
+        if (prefix.trim()) {
+            formatted += `<span class="text-gray-500">${prefix}</span>`;
+        }
+
+        if (json.level) {
+            const levelColors = {
+                'error': 'text-red-500',
+                'warn': 'text-yellow-500',
+                'info': 'text-blue-400',
+                'debug': 'text-gray-400',
+                'trace': 'text-gray-600'
+            };
+            const color = levelColors[json.level] || 'text-green-400';
+            formatted += `<span class="${color} font-bold">[${json.level.toUpperCase()}]</span> `;
+        }
+
+        if (json.message) {
+            formatted += `<span class="text-green-400">${json.message}</span>`;
+        }
+
+        return formatted || line;
+    } catch (e) {
+        return line;
+    }
+}
+
 // View logs modal
 async function viewLogs(containerId, containerName) {
     currentContainerId = containerId;
@@ -208,7 +248,9 @@ async function viewLogs(containerId, containerName) {
         const data = await response.json();
 
         if (data.logs) {
-            document.getElementById('log-content').textContent = data.logs;
+            const logContent = document.getElementById('log-content');
+            const lines = data.logs.split('\n');
+            logContent.innerHTML = lines.map(line => prettifyLogLine(line)).join('\n');
             scrollLogsToBottom();
         }
     } catch (error) {
@@ -229,7 +271,8 @@ function startLogStream(containerId) {
 
     currentLogStream.onmessage = function(event) {
         const logContent = document.getElementById('log-content');
-        logContent.textContent += event.data;
+        const newLine = prettifyLogLine(event.data);
+        logContent.innerHTML += newLine + '\n';
 
         if (document.getElementById('auto-scroll').checked) {
             scrollLogsToBottom();
