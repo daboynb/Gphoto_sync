@@ -11,6 +11,7 @@ Automatically download all your photos from Google Photos using Docker Compose w
 ```bash
 git clone <this-repo>
 cd Gphoto_sync
+docker build -t gphotos-sync:latest .
 docker compose up -d
 ```
 
