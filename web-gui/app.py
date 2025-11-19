@@ -150,10 +150,10 @@ def api_containers():
 
 @app.route('/api/container/<container_id>/logs')
 def api_logs(container_id):
-    """Get container logs"""
+    """Get container logs (last 30 lines)"""
     try:
         container = docker_client.containers.get(container_id)
-        logs = container.logs(tail=500, timestamps=True).decode('utf-8')
+        logs = container.logs(tail=30, timestamps=True).decode('utf-8')
         return jsonify({'logs': logs})
     except Exception as e:
         return jsonify({'error': str(e)}), 404
