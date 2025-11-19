@@ -65,6 +65,30 @@ def get_profile_metadata(profile_name):
         pass
     return {'name': profile_name, 'display_name': profile_name}
 
+def check_sync_status(container):
+    """Check if the container has completed sync by looking at logs"""
+    try:
+        # Get last 100 lines of logs (enough to find SYNC COMPLETED)
+        logs = container.logs(tail=100).decode('utf-8', errors='ignore')
+
+        # Check if SYNC COMPLETED appears in logs
+        if 'SYNC COMPLETED' in logs:
+            return 'completed'
+
+        # Check if sync is running (look for specific log patterns)
+        if 'downloading' in logs.lower() or 'processing' in logs.lower() or 'navigating' in logs.lower():
+            return 'syncing'
+
+        # If container is running but no clear indication
+        if container.status == 'running':
+            return 'idle'
+
+        # Container is not running
+        return 'stopped'
+    except Exception as e:
+        # If we can't get logs, return unknown
+        return 'unknown'
+
 def get_container_info(container):
     """Extract relevant info from container"""
     env_vars = {}
@@ -93,6 +117,9 @@ def get_container_info(container):
     metadata = get_profile_metadata(profile_name)
     display_name = metadata.get('display_name', profile_name)
 
+    # Get sync status
+    sync_status = check_sync_status(container)
+
     return {
         'id': container.id[:12],
         'name': container.name,
@@ -106,7 +133,8 @@ def get_container_info(container):
         'loglevel': env_vars.get('LOGLEVEL', 'info'),
         'worker_count': env_vars.get('WORKER_COUNT', '6'),
         'next_run': cron_info['next_run'],
-        'time_until': cron_info['time_until']
+        'time_until': cron_info['time_until'],
+        'sync_status': sync_status
     }
 
 @app.route('/')
@@ -312,11 +340,14 @@ def create_compose(profile_name):
     # Build command line if cron is disabled
     command_line = "    command: no-cron\n" if not enable_cron else ""
 
+    # Use restart: "no" for no-cron mode, otherwise unless-stopped
+    restart_policy = '"no"' if not enable_cron else "unless-stopped"
+
     compose_content = f"""services:
   gphotos-sync-{profile_name}:
     image: gphotos-sync:latest
     container_name: gphotos-sync-{profile_name}
-{command_line}    restart: unless-stopped
+{command_line}    restart: {restart_policy}
     privileged: true
     volumes:
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
@@ -743,12 +774,15 @@ def delete_profile(profile_name):
         # Step 1: Check if container exists and remove it
         try:
             container = docker_client.containers.get(container_name)
-            # Stop container if running
-            if container.status == 'running':
+            # Always try to stop the container first, regardless of status
+            try:
                 container.stop(timeout=10)
                 success_messages.append(f'Container {container_name} stopped')
-            # Remove container
-            container.remove()
+            except Exception as stop_error:
+                # Container might already be stopped, continue anyway
+                success_messages.append(f'Container stop attempted (may already be stopped)')
+            # Remove container (force=True to ensure removal even if stop failed)
+            container.remove(force=True)
             success_messages.append(f'Container {container_name} removed')
         except docker.errors.NotFound:
             success_messages.append(f'Container {container_name} not found (already deleted)')

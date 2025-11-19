@@ -91,6 +91,16 @@ async function loadContainers() {
             const statusColor = container.status === 'running' ? 'green' : 'red';
             const statusIcon = container.status === 'running' ? 'circle-check' : 'circle-xmark';
 
+            // Sync status badge
+            let syncBadge = '';
+            if (container.sync_status === 'completed') {
+                syncBadge = '<span class="px-2 py-1 rounded text-white bg-green-600"><i class="fas fa-check-circle"></i> Sync Completed</span>';
+            } else if (container.sync_status === 'syncing') {
+                syncBadge = '<span class="px-2 py-1 rounded text-white bg-blue-500"><i class="fas fa-sync fa-spin"></i> Syncing...</span>';
+            } else if (container.sync_status === 'idle') {
+                syncBadge = '<span class="px-2 py-1 rounded text-white bg-yellow-500"><i class="fas fa-clock"></i> Idle</span>';
+            }
+
             return `
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex justify-between items-start mb-4">
@@ -106,6 +116,7 @@ async function loadContainers() {
                                 <span class="px-2 py-1 rounded text-white bg-${statusColor}-500">
                                     <i class="fas fa-${statusIcon}"></i> ${container.status}
                                 </span>
+                                ${syncBadge}
                                 <span class="text-gray-500">ID: ${container.id}</span>
                             </div>
                         </div>
