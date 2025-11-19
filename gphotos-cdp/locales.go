@@ -126,6 +126,30 @@ func initLocales() error {
 		}
 	}
 
+	if _, exists := locales["it"]; !exists {
+		locales["it"] = GPhotosLocale{
+			SelectAllPhotosLabel:            NodeLabelMatch{"startsWith", "Seleziona tutte le foto del"},
+			FileNameLabel:                   NodeLabelMatch{"startsWith", "Nome file:"},
+			DateLabel:                       NodeLabelMatch{"startsWith", "Data di acquisizione:"},
+			Today:                           "Oggi",
+			Yesterday:                       "Ieri",
+			TimeLabel:                       NodeLabelMatch{"startsWith", "Ora di acquisizione:"},
+			TzLabel:                         NodeLabelMatch{"startsWith", "GMT"},
+			ViewPreviousPhotoMatch:          NodeLabelMatch{"equals", "Visualizza foto precedente"},
+			MoreOptionsLabel:                NodeLabelMatch{"equals", "Altre opzioni"},
+			DownloadLabel:                   NodeLabelMatch{"equals", "Scarica - Shift+D"},
+			DownloadOriginalLabel:           NodeLabelMatch{"equals", "Scarica originale"},
+			OpenInfoMatch:                   NodeLabelMatch{"equals", "Apri informazioni"},
+			VideoStillProcessingDialogLabel: NodeLabelMatch{"startsWith", "Il video è ancora in elaborazione"},
+			VideoStillProcessingStatusText:  "Il video è ancora in elaborazione e può essere scaricato più tardi",
+			NoWebpageFoundText:              "Nessuna pagina web trovata per l'indirizzo web:",
+			ShortDayNames:                   []string{"dom", "lun", "mar", "mer", "gio", "ven", "sab"},
+			LongDayNames:                    []string{"domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"},
+			ShortMonthNames:                 []string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"},
+			NotNow:                          "Non ora",
+		}
+	}
+
 	return nil
 }
 
