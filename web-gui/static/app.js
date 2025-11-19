@@ -323,6 +323,13 @@ async function loadAvailableProfiles() {
             return;
         }
 
+        // Check authentication status for each profile
+        const profilesWithAuth = await Promise.all(profiles.map(async profile => {
+            const authResponse = await fetch(`/api/check-auth/${profile.name}`);
+            const authData = await authResponse.json();
+            return { ...profile, authenticated: authData.authenticated };
+        }));
+
         profilesDiv.innerHTML = `
             <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
                 <div class="flex items-start">
@@ -334,24 +341,33 @@ async function loadAvailableProfiles() {
                             Available Profiles (Not Running)
                         </h3>
                         <div class="space-y-2">
-                            ${profiles.map(profile => `
+                            ${profilesWithAuth.map(profile => `
                                 <div class="flex items-center justify-between bg-white p-3 rounded">
                                     <div>
                                         <span class="font-semibold">${profile.display_name || profile.name}</span>
                                         ${profile.display_name && profile.display_name !== profile.name ?
                                             `<span class="ml-2 text-xs text-gray-500">(${profile.name})</span>` : ''
                                         }
-                                        ${!profile.has_compose ?
-                                            '<span class="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">No docker-compose.yml</span>' :
+                                        ${!profile.has_compose && profile.authenticated ?
+                                            '<span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"><i class="fas fa-check"></i> Authenticated</span>' :
+                                            !profile.has_compose ?
+                                            '<span class="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Not authenticated</span>' :
                                             '<span class="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Ready to start</span>'
                                         }
                                     </div>
                                     <div class="flex gap-2">
                                         ${!profile.has_compose ? `
-                                            <button onclick="startVNCAuth('${profile.name}', '${profile.display_name || profile.name}')"
-                                                    class="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600">
-                                                <i class="fas fa-key"></i> Authenticate
-                                            </button>
+                                            ${profile.authenticated ? `
+                                                <button onclick="openConfigModal('${profile.name}', '${profile.display_name || profile.name}')"
+                                                        class="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">
+                                                    <i class="fas fa-cog"></i> Configure
+                                                </button>
+                                            ` : `
+                                                <button onclick="startVNCAuth('${profile.name}', '${profile.display_name || profile.name}')"
+                                                        class="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600">
+                                                    <i class="fas fa-key"></i> Authenticate
+                                                </button>
+                                            `}
                                         ` : `
                                             <button onclick="startProfileFromGUI('${profile.name}')"
                                                     class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">
@@ -547,6 +563,7 @@ function openConfigModal(profileName, displayName) {
     document.getElementById('config-modal').classList.remove('hidden');
 
     // Set default values for new profile
+    document.getElementById('config-enable-cron').checked = true;
     document.getElementById('config-cron').value = '0 3 * * *';
     document.getElementById('config-run-on-startup').checked = true;
     document.getElementById('config-loglevel').value = 'info';
@@ -559,6 +576,9 @@ function openConfigModal(profileName, displayName) {
     document.getElementById('config-pgid').value = 1000;
     document.getElementById('config-restart-schedule').value = '';
     document.getElementById('config-healthcheck-url').value = '';
+
+    // Show cron fields by default
+    toggleCronSchedule();
 
     // Hide advanced options by default
     document.getElementById('advanced-options').classList.add('hidden');
@@ -584,7 +604,9 @@ async function editProfileConfig(profileName, displayName) {
         }
 
         // Populate form with current values
-        document.getElementById('config-cron').value = config.cron_schedule || '0 3 * * *';
+        const isCronDisabled = config.cron_schedule === 'disabled' || config.cron_schedule === 'no-cron';
+        document.getElementById('config-enable-cron').checked = !isCronDisabled;
+        document.getElementById('config-cron').value = isCronDisabled ? '0 3 * * *' : (config.cron_schedule || '0 3 * * *');
         document.getElementById('config-run-on-startup').checked = config.run_on_startup;
         document.getElementById('config-loglevel').value = config.loglevel || 'info';
         document.getElementById('config-workers').value = config.worker_count || 6;
@@ -596,6 +618,9 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-pgid').value = config.pgid || 1000;
         document.getElementById('config-restart-schedule').value = config.restart_schedule || '';
         document.getElementById('config-healthcheck-url').value = config.healthcheck_url || '';
+
+        // Toggle cron fields visibility
+        toggleCronSchedule();
 
         // Hide advanced options by default
         document.getElementById('advanced-options').classList.add('hidden');
@@ -613,11 +638,28 @@ function closeConfigModal() {
     currentConfigProfileNum = null;
 }
 
+function toggleCronSchedule() {
+    const enableCron = document.getElementById('config-enable-cron').checked;
+    const cronContainer = document.getElementById('cron-schedule-container');
+    const startupContainer = document.getElementById('run-on-startup-container');
+
+    if (enableCron) {
+        cronContainer.style.display = 'block';
+        startupContainer.style.display = 'block';
+    } else {
+        cronContainer.style.display = 'none';
+        startupContainer.style.display = 'none';
+    }
+}
+
 async function saveConfiguration() {
+    const enableCron = document.getElementById('config-enable-cron').checked;
+
     // Basic configuration
     const config = {
-        cron_schedule: document.getElementById('config-cron').value.trim(),
-        run_on_startup: document.getElementById('config-run-on-startup').checked,
+        enable_cron: enableCron,
+        cron_schedule: enableCron ? document.getElementById('config-cron').value.trim() : 'no-cron',
+        run_on_startup: enableCron ? document.getElementById('config-run-on-startup').checked : false,
         loglevel: document.getElementById('config-loglevel').value,
         worker_count: parseInt(document.getElementById('config-workers').value),
         albums: document.getElementById('config-albums').value.trim(),

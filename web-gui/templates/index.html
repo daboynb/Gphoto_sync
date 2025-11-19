@@ -106,8 +106,28 @@
                 </div>
 
                 <div class="space-y-4">
-                    <!-- Cron Schedule -->
+                    <!-- Enable Cron -->
                     <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="config-enable-cron" checked
+                                   class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                   onchange="toggleCronSchedule()">
+                            <span class="text-sm font-medium text-gray-700">
+                                <i class="fas fa-calendar-check"></i> Enable Automatic Sync Schedule
+                            </span>
+                        </label>
+                        <div class="ml-6 mt-1">
+                            <p class="text-xs text-gray-500">
+                                <strong>Checked:</strong> Container runs continuously, syncing on schedule (cron) and/or at startup
+                            </p>
+                            <p class="text-xs text-gray-500">
+                                <strong>Unchecked:</strong> Container runs once at startup, then exits (manual mode - no automatic syncing)
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Cron Schedule -->
+                    <div id="cron-schedule-container">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
                             <i class="fas fa-clock"></i> Sync Schedule (Cron)
                         </label>
@@ -118,7 +138,7 @@
                     </div>
 
                     <!-- Run on Startup -->
-                    <div>
+                    <div id="run-on-startup-container">
                         <label class="flex items-center">
                             <input type="checkbox" id="config-run-on-startup" checked
                                    class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">

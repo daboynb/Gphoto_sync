@@ -74,7 +74,15 @@ def get_container_info(container):
                 key, val = env.split('=', 1)
                 env_vars[key] = val
 
-    cron_info = parse_cron_next_run(env_vars.get('CRON_SCHEDULE', '0 2 * * *'))
+    # Check if container is running with no-cron command
+    cmd = container.attrs.get('Config', {}).get('Cmd', [])
+    has_cron = not (cmd and 'no-cron' in cmd)
+
+    # Only calculate next run if cron is enabled
+    if has_cron and env_vars.get('CRON_SCHEDULE'):
+        cron_info = parse_cron_next_run(env_vars.get('CRON_SCHEDULE', '0 2 * * *'))
+    else:
+        cron_info = {'next_run': 'Disabled (no-cron mode)', 'time_until': 'N/A'}
 
     # Extract profile name from container name (e.g., "gphotos-sync-family" -> "family")
     profile_name = container.name.replace(get_container_prefix() + '-', '', 1)
@@ -249,6 +257,7 @@ def create_compose(profile_name):
     workspace_path = get_host_workspace_path()
 
     # Extract configuration with defaults
+    enable_cron = config.get('enable_cron', True)
     cron_schedule = config.get('cron_schedule', '0 3 * * *')
     run_on_startup = config.get('run_on_startup', True)
     loglevel = config.get('loglevel', 'info')
@@ -266,12 +275,15 @@ def create_compose(profile_name):
     env_vars = [
         f'      - PUID={puid}',
         f'      - PGID={pgid}',
-        f'      - CRON_SCHEDULE={cron_schedule}',
-        f'      - RUN_ON_STARTUP={str(run_on_startup).lower()}',
         f'      - LOGLEVEL={loglevel}',
         f'      - TZ={timezone}',
         f'      - WORKER_COUNT={worker_count}'
     ]
+
+    # Only add cron-related env vars if cron is enabled
+    if enable_cron:
+        env_vars.insert(2, f'      - CRON_SCHEDULE={cron_schedule}')
+        env_vars.insert(3, f'      - RUN_ON_STARTUP={str(run_on_startup).lower()}')
 
     # Add ALBUMS env var if specified
     if albums and albums.strip() and albums.strip().upper() != 'ALL':
@@ -297,11 +309,14 @@ def create_compose(profile_name):
             env_vars.append(f'      - HEALTHCHECK_HOST={healthcheck_host}')
             env_vars.append(f'      - HEALTHCHECK_ID={healthcheck_id}')
 
+    # Build command line if cron is disabled
+    command_line = "    command: no-cron\n" if not enable_cron else ""
+
     compose_content = f"""services:
   gphotos-sync-{profile_name}:
     image: gphotos-sync:latest
     container_name: gphotos-sync-{profile_name}
-    restart: unless-stopped
+{command_line}    restart: unless-stopped
     privileged: true
     volumes:
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
@@ -331,6 +346,13 @@ networks:
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/check-auth/<profile_name>', methods=['GET'])
+def check_auth(profile_name):
+    """Check if profile has authentication cookies"""
+    cookies_file = f'/workspace/profiles/{profile_name}/Default/Cookies'
+    has_cookies = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 0
+    return jsonify({'authenticated': has_cookies})
+
 @app.route('/api/get-config/<profile_name>', methods=['GET'])
 def get_config(profile_name):
     """Get current configuration from docker-compose file"""
@@ -345,13 +367,18 @@ def get_config(profile_name):
         with open(compose_file, 'r') as f:
             compose_data = yaml.safe_load(f)
 
-        # Extract environment variables
+        # Extract environment variables and command
         service_name = f'gphotos-sync-{profile_name}'
-        env_vars = compose_data.get('services', {}).get(service_name, {}).get('environment', [])
+        service_config = compose_data.get('services', {}).get(service_name, {})
+        env_vars = service_config.get('environment', [])
+        command = service_config.get('command', '')
+
+        # Check if running in no-cron mode
+        is_no_cron = command == 'no-cron'
 
         # Parse environment variables
         config = {
-            'cron_schedule': '',
+            'cron_schedule': 'disabled' if is_no_cron else '',
             'run_on_startup': True,
             'loglevel': 'info',
             'worker_count': 6,
