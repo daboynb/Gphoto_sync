@@ -5,6 +5,7 @@ import docker
 from flask import Flask, render_template, jsonify, Response, stream_with_context
 from datetime import datetime, timedelta
 from croniter import croniter
+import pytz
 
 app = Flask(__name__)
 
@@ -28,9 +29,15 @@ def get_sync_containers():
 def parse_cron_next_run(cron_schedule, tz='Europe/Rome'):
     """Calculate next run time from cron schedule"""
     try:
-        base_time = datetime.now()
+        # Get timezone-aware current time
+        timezone = pytz.timezone(tz)
+        base_time = datetime.now(timezone)
+
+        # Calculate next cron run
         cron = croniter(cron_schedule, base_time)
         next_run = cron.get_next(datetime)
+
+        # Calculate time difference
         time_until = next_run - base_time
 
         hours = int(time_until.total_seconds() // 3600)
@@ -40,7 +47,7 @@ def parse_cron_next_run(cron_schedule, tz='Europe/Rome'):
             'next_run': next_run.strftime('%Y-%m-%d %H:%M:%S'),
             'time_until': f"{hours}h {minutes}m"
         }
-    except:
+    except Exception as e:
         return {'next_run': 'N/A', 'time_until': 'N/A'}
 
 def sanitize_profile_name(name):
@@ -104,7 +111,9 @@ def get_container_info(container):
 
     # Only calculate next run if cron is enabled
     if has_cron and env_vars.get('CRON_SCHEDULE'):
-        cron_info = parse_cron_next_run(env_vars.get('CRON_SCHEDULE', '0 2 * * *'))
+        # Get timezone from container env, default to Europe/Rome
+        tz = env_vars.get('TZ', 'Europe/Rome')
+        cron_info = parse_cron_next_run(env_vars.get('CRON_SCHEDULE', '0 2 * * *'), tz)
     else:
         cron_info = {'next_run': 'Disabled (no-cron mode)', 'time_until': 'N/A'}
 
