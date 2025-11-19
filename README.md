@@ -111,6 +111,44 @@ Ensures syncs run at the correct local time.
 
 ---
 
+## System Requirements
+
+### Supported Architectures
+
+**⚠️ AMD64 ONLY**
+
+### Why ARM64 is Not Supported
+
+This project requires **Google Chrome** for automated Google Photos authentication. ARM64 systems cannot run this project because:
+
+#### Technical Limitations
+
+**Google Chrome is unavailable for ARM64**
+
+- Only Chromium (open-source version) is available for Linux on ARM64/aarch64 architecture.
+- Google does not provide official Chrome builds for ARM-based Linux systems.
+
+**Chromium lacks Google OAuth API keys by default**
+
+- Chromium builds do not include Google API keys, so some Google services (like OAuth sign-in, Sync, Safe Browsing) may not work.
+- OAuth authentication is restricted in default Chromium builds, but it can work if you manually add your own API keys.
+
+**Google blocks automated Chromium logins**
+
+- Google's security policies can detect and block headless or automated Chromium sessions.
+- Even with valid saved credentials, Google may require manual password re-entry.
+- Session cookies can be invalidated more aggressively in Chromium.
+- Continuous password prompts prevent automated sync.
+
+#### What This Means
+
+After some test I got :
+- ✅ Manual login in VNC works using multiarch docker image (one-time authentication)
+- ❌ Automated headless sync fails (requires password every time)
+- ❌ Session persistence doesn't work (cookies invalidated)
+- ❌ Cannot run unattended syncs (defeats the purpose of automation)
+---
+
 ## Credits & License
 
 This project is a derivative work based on the following open-source projects:
