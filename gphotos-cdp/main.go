@@ -1157,15 +1157,7 @@ func acquireTabLock(log zerolog.Logger, forWhat string) func() {
 // if it is not already open. Then we read the date from the
 // aria-label="Date taken: ?????" field.
 func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId string) (PhotoData, error) {
-	// TEMPORARILY DISABLED: Skip metadata extraction for faster sync
-	// Return dummy data using current time and imageId as filename
-	log.Debug().Msg("skipping metadata extraction (using dummy data for now)")
-	return PhotoData{
-		date:     time.Now(),
-		filename: imageId,
-	}, nil
-
-	/* ORIGINAL METADATA EXTRACTION CODE - COMMENTED OUT
+	// METADATA EXTRACTION ENABLED - Now supports both English and Italian labels
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
@@ -1205,26 +1197,31 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 				}
 			}
 
+			// Extract data from the "Foto/Video - Orientation - Date, Time" aria-label
+			var photoInfoLabel string
 			if err := chromedp.Run(ctx,
 				chromedp.Sleep(time.Duration(min(2000, (math.Pow(1.5, float64(n-1))-1)*50))*time.Millisecond),
-				chromedp.Evaluate(getContentOfFirstVisibleNodeScript(getAriaLabelSelector(loc.FileNameLabel), imageId), &filename),
-				chromedp.Evaluate(getContentOfFirstVisibleNodeScript(getAriaLabelSelector(loc.DateLabel), imageId), &dateStr),
-				chromedp.Evaluate(getContentOfFirstVisibleNodeScript(getAriaLabelSelector(loc.DateLabel)+" + div "+getAriaLabelSelector(loc.TimeLabel), imageId), &timeStr),
-				chromedp.Evaluate(getContentOfFirstVisibleNodeScript(getAriaLabelSelector(loc.DateLabel)+" + div "+getAriaLabelSelector(loc.TzLabel), imageId), &tzStr),
+				chromedp.Evaluate(`
+					[...document.querySelectorAll('[data-p*="`+imageId+`"] [aria-label]')]
+						.map(el => el.getAttribute('aria-label'))
+						.find(label => label && (label.startsWith('Foto - ') || label.startsWith('Video - ') ||
+						                          label.startsWith('Photo - ') || label.startsWith('Video - '))) || ''
+				`, &photoInfoLabel),
 			); err != nil {
-				return fmt.Errorf("could not extract photo data due to %w", err)
+				return fmt.Errorf("could not extract photo info label due to %w", err)
 			}
 
-			if len(dateStr) == 0 && n >= 2 {
-				log.Trace().Msgf("incomplete data - Date: %v, Time: %v, Timezone: %v, File name: %v", dateStr, timeStr, tzStr, filename)
-
-				// Click on info button
-				log.Debug().Msgf("date not visible, clicking on i button")
-				if err := chromedp.Run(ctx,
-					target.ActivateTarget(chromedp.FromContext(ctx).Target.TargetID),
-					chromedp.Sleep(10*time.Millisecond),
-					chromedp.EvaluateAsDevTools(`document.querySelector('[data-p*="`+imageId+`"] `+getAriaLabelSelector(loc.OpenInfoMatch)+`')?.click()`, nil)); err != nil {
-					return fmt.Errorf("could not click on info button due to %w", err)
+			if len(photoInfoLabel) > 0 {
+				// Parse format: "Foto - Verticale - 13 nov 2025, 00:57:41"
+				parts := strings.Split(photoInfoLabel, " - ")
+				if len(parts) >= 3 {
+					dateTimeStr := parts[len(parts)-1]
+					dateTimeParts := strings.Split(dateTimeStr, ", ")
+					if len(dateTimeParts) == 2 {
+						dateStr = dateTimeParts[0]
+						timeStr = dateTimeParts[1]
+						filename = imageId
+					}
 				}
 			}
 
@@ -1236,6 +1233,12 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 			break
 		} else {
 			log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("done attempt to find photo data nodes")
+		}
+
+		// If we can't find metadata after 10 attempts, exit with error
+		if n >= 10 {
+			log.Error().Msgf("FATAL: could not find metadata after %d attempts for item %s", n, imageId)
+			return PhotoData{}, fmt.Errorf("failed to extract metadata after %d attempts", n)
 		}
 
 		if time.Since(start).Seconds() > 200 {
@@ -1258,7 +1261,6 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 	log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("found date and original filename: '%v', '%v'", dt, filename)
 
 	return PhotoData{dt, norm.NFC.String(filename)}, nil
-	END OF COMMENTED CODE */
 }
 
 // startDownload starts the download of the currently viewed item. It returns
