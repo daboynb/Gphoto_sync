@@ -2376,12 +2376,36 @@ func parseDate(dateStr, timeStr, tzStr string) (time.Time, error) {
 	}
 	dateStr = strings.Replace(dateStr, dayStr, "", 1)
 
+	// Try to find month in current locale
 	for i, v := range loc.ShortMonthNames {
 		if strings.Contains(strings.ToUpper(dateStr), strings.ToUpper(v)) {
 			month = i + 1
 			break
 		}
 	}
+
+	// Fallback: try Italian month names
+	if month == 0 {
+		italianMonths := []string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"}
+		for i, v := range italianMonths {
+			if strings.Contains(strings.ToLower(dateStr), v) {
+				month = i + 1
+				break
+			}
+		}
+	}
+
+	// Fallback: try English month names
+	if month == 0 {
+		englishMonths := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+		for i, v := range englishMonths {
+			if strings.Contains(strings.ToUpper(dateStr), strings.ToUpper(v)) {
+				month = i + 1
+				break
+			}
+		}
+	}
+
 	if month == 0 {
 		return time.Time{}, fmt.Errorf("could not find month in string %s", dateStr)
 	}
