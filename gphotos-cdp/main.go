@@ -1157,6 +1157,15 @@ func acquireTabLock(log zerolog.Logger, forWhat string) func() {
 // if it is not already open. Then we read the date from the
 // aria-label="Date taken: ?????" field.
 func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId string) (PhotoData, error) {
+	// TEMPORARILY DISABLED: Skip metadata extraction for faster sync
+	// Return dummy data using current time and imageId as filename
+	log.Debug().Msg("skipping metadata extraction (using dummy data for now)")
+	return PhotoData{
+		date:     time.Now(),
+		filename: imageId,
+	}, nil
+
+	/* ORIGINAL METADATA EXTRACTION CODE - COMMENTED OUT
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
@@ -1249,6 +1258,7 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 	log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("found date and original filename: '%v', '%v'", dt, filename)
 
 	return PhotoData{dt, norm.NFC.String(filename)}, nil
+	END OF COMMENTED CODE */
 }
 
 // startDownload starts the download of the currently viewed item. It returns
@@ -1272,14 +1282,19 @@ func (s *Session) startDownload(ctx context.Context, log zerolog.Logger, imageId
 
 		select {
 		case <-requestTimer.C:
-			if err := requestDownload(ctx, log, isOriginal, hasOriginal); err != nil {
-				if isOriginal || !errors.Is(err, errCouldNotPressDownloadButton) {
+			// MODIFIED: Always use backup method (Shift+D) for non-original downloads
+			// This is faster and more reliable than clicking through the menu
+			if !isOriginal {
+				// Use Shift+D keyboard shortcut directly
+				if err := requestDownloadBackup(ctx, log); err != nil {
 					return NewDownload{}, nil, err
-				} else if !isOriginal {
-					requestDownloadBackup(ctx, log)
 				}
-				refreshTimer = time.NewTimer(100 * time.Millisecond)
+				refreshTimer = time.NewTimer(5 * time.Second)
 			} else {
+				// For original quality, still use the menu method
+				if err := requestDownload(ctx, log, isOriginal, hasOriginal); err != nil {
+					return NewDownload{}, nil, err
+				}
 				refreshTimer = time.NewTimer(5 * time.Second)
 			}
 		case <-refreshTimer.C:
@@ -1437,8 +1452,12 @@ func (s *Session) processDownload(log zerolog.Logger, downloadInfo NewDownload, 
 
 			foundExpectedFile = foundExpectedFile || compareMangled(data.filename, filename)
 		}
+		// TEMPORARILY DISABLED: Skip filename verification when metadata extraction is disabled
+		// if !foundExpectedFile {
+		// 	return fmt.Errorf("expected file %s not found in downloaded zip (found %s) for %s (%w)", data.filename, strings.Join(baseNames, ", "), imageId, errUnexpectedDownload)
+		// }
 		if !foundExpectedFile {
-			return fmt.Errorf("expected file %s not found in downloaded zip (found %s) for %s (%w)", data.filename, strings.Join(baseNames, ", "), imageId, errUnexpectedDownload)
+			log.Debug().Msgf("accepting any file from zip (metadata extraction disabled), found: %s", strings.Join(baseNames, ", "))
 		}
 	} else {
 		var filename string
@@ -1449,10 +1468,12 @@ func (s *Session) processDownload(log zerolog.Logger, downloadInfo NewDownload, 
 		}
 
 		if isOriginal || !hasOriginal {
-			// Error if filename is not the expected filename
-			if !compareMangled(data.filename, filename) {
-				return fmt.Errorf("expected file %s but downloaded file %s for %s (%w)", data.filename, filename, imageId, errUnexpectedDownload)
-			}
+			// TEMPORARILY DISABLED: Skip filename verification when metadata extraction is disabled
+			// Just use whatever filename was downloaded from Google Photos
+			// if !compareMangled(data.filename, filename) {
+			// 	return fmt.Errorf("expected file %s but downloaded file %s for %s (%w)", data.filename, filename, imageId, errUnexpectedDownload)
+			// }
+			log.Debug().Msgf("accepting downloaded filename: %s (metadata extraction disabled)", filename)
 		}
 
 		if isOriginal {
