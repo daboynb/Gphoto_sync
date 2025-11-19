@@ -2,6 +2,8 @@
 
 **This is a beta, expect some bugs!**
 
+**It supports only EN/ITA accounts right now!**
+
 Automatically download all your photos from Google Photos using Docker Compose with an intuitive Web GUI for managing multiple accounts.
 
 ## Quick Start (Web GUI)
@@ -44,11 +46,10 @@ Your profile will start automatically and begin syncing!
 This tool uses **Chrome DevTools Protocol (CDP)** instead of Google Photos API:
 
 1. **Manual Authentication**: Login once via VNC browser, Chrome saves session cookies
-2. **Automated Browsing**: Headless Chrome navigates Google Photos using saved credentials
-3. **Web Scraping**: Finds photos/videos by inspecting the web page DOM
-4. **Direct Download**: Downloads files using intercepted network requests
-
-**Benefits**: No API limitations, full quality downloads, works as long as the web interface exists.
+2. **Automated Browsing**: Chrome DevTools Protocol controls headless Chrome with saved credentials
+3. **DOM Scraping**: Uses `document.querySelectorAll()` to find photos, reads `aria-label` for metadata
+4. **Keyboard Shortcuts**: Triggers downloads via `Shift+D` shortcut (faster than menu clicking)
+5. **Download Interception**: CDP monitors `browser.EventDownloadProgress` for original quality files
 
 ---
 
@@ -88,7 +89,7 @@ Format: `minute hour day month weekday`
 - Recommended: 4-8 for most systems
 
 ### Albums
-**Which albums to sync**
+**Which albums to sync** (This need to be tested)
 
 Options:
 1. **Empty or "ALL"** - Sync entire library
