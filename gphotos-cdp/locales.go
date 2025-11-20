@@ -103,28 +103,26 @@ func initLocales() error {
 		}
 	}
 
-	// Italian locale
-	if _, exists := locales["it"]; !exists {
-		locales["it"] = GPhotosLocale{
-			SelectAllPhotosLabel:            NodeLabelMatch{"startsWith", "Seleziona tutte le foto a partire da"},
-			FileNameLabel:                   NodeLabelMatch{"startsWith", "Nome file:"},
-			DateLabel:                       NodeLabelMatch{"startsWith", "Data dello scatto:"},
-			Today:                           "Oggi",
-			Yesterday:                       "Ieri",
-			TimeLabel:                       NodeLabelMatch{"startsWith", "Ora dello scatto:"},
+	if _, exists := locales["nl"]; !exists {
+		locales["nl"] = GPhotosLocale{
+			SelectAllPhotosLabel:            NodeLabelMatch{"startsWith", "Alle foto's van"},
+			FileNameLabel:                   NodeLabelMatch{"startsWith", "Bestandsnaam:"},
+			DateLabel:                       NodeLabelMatch{"startsWith", "Fotodatum:"},
+			Today:                           "Vandaag",
+			Yesterday:                       "Gisteren",
+			TimeLabel:                       NodeLabelMatch{"startsWith", "Tijdsduur:"},
 			TzLabel:                         NodeLabelMatch{"startsWith", "GMT"},
-			ViewPreviousPhotoMatch:          NodeLabelMatch{"equals", "Visualizza la foto precedente"},
-			MoreOptionsLabel:                NodeLabelMatch{"equals", "Altre opzioni"},
-			DownloadLabel:                   NodeLabelMatch{"equals", "Scarica - Shift+D"},
-			DownloadOriginalLabel:           NodeLabelMatch{"equals", "Scarica originale"},
-			OpenInfoMatch:                   NodeLabelMatch{"equals", "Apri informazioni"},
-			VideoStillProcessingDialogLabel: NodeLabelMatch{"startsWith", "Il video è ancora in fase di elaborazione"},
-			VideoStillProcessingStatusText:  "Il video è ancora in fase di elaborazione e può essere scaricato più tardi",
-			NoWebpageFoundText:              "Nessuna pagina web trovata per l'indirizzo web:",
-			ShortDayNames:                   []string{"Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"},
-			LongDayNames:                    []string{"Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"},
-			ShortMonthNames:                 []string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"},
-			NotNow:                          "Non ora",
+			ViewPreviousPhotoMatch:          NodeLabelMatch{"equals", "Vorige foto bekijken"},
+			MoreOptionsLabel:                NodeLabelMatch{"equals", "Meer opties"},
+			DownloadLabel:                   NodeLabelMatch{"equals", "Downloaden - Shift+D"},
+			DownloadOriginalLabel:           NodeLabelMatch{"equals", "Download original"},
+			OpenInfoMatch:                   NodeLabelMatch{"equals", "Info openen"},
+			VideoStillProcessingDialogLabel: NodeLabelMatch{"startsWith", "Video still is processing"},
+			VideoStillProcessingStatusText:  "Video is still processing &amp; can be downloaded later",
+			NoWebpageFoundText:              "No webpage was found for the web address:",
+			ShortDayNames:                   []string{"zo", "ma", "di", "wo", "do", "vr", "za"},
+			LongDayNames:                    []string{"zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"},
+			ShortMonthNames:                 []string{"jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"},
 		}
 	}
 
