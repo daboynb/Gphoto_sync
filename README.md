@@ -35,12 +35,6 @@ Your profile will start automatically and begin syncing!
 
 ---
 
-## Screenshots
-
-📸 **[View all screenshots →](SCREENSHOTS.md)**
-
----
-
 ## How It Works
 
 This tool uses **Chrome DevTools Protocol (CDP)** instead of Google Photos API:
