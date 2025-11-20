@@ -1212,14 +1212,26 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 			}
 
 			if len(photoInfoLabel) > 0 {
-				// Parse format: "Foto - Verticale - 13 nov 2025, 00:57:41"
+				// Parse format:
+				// Italian: "Foto - Verticale - 13 nov 2025, 00:57:41"
+				// English: "Photo - Portrait - Nov 17, 2025, 11:08:35 PM"
 				parts := strings.Split(photoInfoLabel, " - ")
 				if len(parts) >= 3 {
 					dateTimeStr := parts[len(parts)-1]
 					dateTimeParts := strings.Split(dateTimeStr, ", ")
+
+					// Handle both date formats:
+					// Italian: ["13 nov 2025", "00:57:41"] (2 parts)
+					// English: ["Nov 17", "2025", "11:08:35 PM"] (3 parts)
 					if len(dateTimeParts) == 2 {
+						// Italian format
 						dateStr = dateTimeParts[0]
 						timeStr = dateTimeParts[1]
+						filename = imageId
+					} else if len(dateTimeParts) == 3 {
+						// English format: rejoin date parts
+						dateStr = dateTimeParts[0] + " " + dateTimeParts[1]
+						timeStr = dateTimeParts[2]
 						filename = imageId
 					}
 				}
