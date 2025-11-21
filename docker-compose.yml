@@ -9,6 +9,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace  # Mount project directory to access profiles and create compose files
+      - /:/host:ro  # Mount entire host filesystem as read-only for folder browsing
     environment:
       - CONTAINER_PREFIX=gphotos-sync
     networks:

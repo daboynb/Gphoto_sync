@@ -163,6 +163,10 @@ async function loadContainers() {
                             <i class="fas fa-rotate"></i> Restart
                         </button>
                         ${container.profile !== 'default' ? `
+                            <button onclick="reAuthProfile('${container.profile}', '${container.display_name || container.name}')"
+                                    class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm">
+                                <i class="fas fa-key"></i> Re-Auth
+                            </button>
                             <button onclick="editProfileConfig('${container.profile}', '${container.display_name || container.name}')"
                                     class="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 text-sm">
                                 <i class="fas fa-cog"></i> Edit Config
@@ -624,6 +628,7 @@ function openConfigModal(profileName, displayName) {
     document.getElementById('config-workers').value = 6;
     document.getElementById('config-albums').value = '';
     document.getElementById('config-timezone').value = 'Europe/Rome';
+    document.getElementById('config-photo-dir').value = '';
 
     // Advanced options defaults
     document.getElementById('config-puid').value = 1000;
@@ -666,6 +671,7 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-workers').value = config.worker_count || 6;
         document.getElementById('config-albums').value = config.albums || '';
         document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
+        document.getElementById('config-photo-dir').value = config.photo_dir || '';
 
         // Advanced options
         document.getElementById('config-puid').value = config.puid || 1000;
@@ -718,6 +724,7 @@ async function saveConfiguration() {
         worker_count: parseInt(document.getElementById('config-workers').value),
         albums: document.getElementById('config-albums').value.trim(),
         timezone: document.getElementById('config-timezone').value.trim(),
+        photo_dir: document.getElementById('config-photo-dir').value.trim(),
 
         // Advanced options
         puid: parseInt(document.getElementById('config-puid').value),
@@ -791,10 +798,34 @@ async function saveConfiguration() {
 // VNC Authentication
 let currentAuthProfileNum = null;
 let currentAuthProfileName = null;
+let isReAuthMode = false;
 
 function startVNCAuth(profileName, displayName) {
     currentAuthProfileNum = profileName; // Store profile name instead of number
     currentAuthProfileName = displayName;
+    isReAuthMode = false;
+    document.getElementById('vnc-profile-name').textContent = displayName;
+    document.getElementById('vnc-auth-modal').classList.remove('hidden');
+
+    // Reset UI
+    document.getElementById('vnc-status').classList.remove('hidden');
+    document.getElementById('vnc-running').classList.add('hidden');
+}
+
+async function reAuthProfile(profileName, displayName) {
+    // First, stop any existing VNC container to avoid profile confusion
+    try {
+        await fetch('/api/stop-auth', { method: 'POST' });
+        // Wait a moment for the container to fully stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+        // Ignore errors if no VNC is running
+        console.log('No existing VNC to stop, continuing...');
+    }
+
+    currentAuthProfileNum = profileName;
+    currentAuthProfileName = displayName;
+    isReAuthMode = true;
     document.getElementById('vnc-profile-name').textContent = displayName;
     document.getElementById('vnc-auth-modal').classList.remove('hidden');
 
@@ -815,7 +846,12 @@ async function startVNCContainer() {
     startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting VNC...';
 
     try {
-        const response = await fetch(`/api/start-auth/${currentAuthProfileNum}`, {
+        // Use different endpoint based on whether it's re-auth or initial auth
+        const endpoint = isReAuthMode
+            ? `/api/reauth-profile/${currentAuthProfileNum}`
+            : `/api/start-auth/${currentAuthProfileNum}`;
+
+        const response = await fetch(endpoint, {
             method: 'POST'
         });
 
@@ -831,7 +867,10 @@ async function startVNCContainer() {
             const currentHost = window.location.hostname;
             vncLink.href = `http://${currentHost}:6080`;
 
-            showToast('VNC container started successfully', 'success');
+            const message = isReAuthMode
+                ? 'VNC container started for re-authentication'
+                : 'VNC container started successfully';
+            showToast(message, 'success');
         } else {
             showToast('Error starting VNC: ' + (data.error || 'Unknown error'), 'error');
             startBtn.disabled = false;
@@ -873,18 +912,24 @@ async function stopVNCAndSave() {
                 const data = await response.json();
 
                 if (data.status === 'stopped') {
-                    showToast('Authentication saved successfully! Opening configuration...', 'success');
-
                     // Save profile info before closing VNC modal
                     const profileName = currentAuthProfileNum; // This is the profile name (e.g., "family")
                     const displayName = currentAuthProfileName; // This is the display name (e.g., "Family Photos")
 
-                    closeVNCModal();
+                    if (isReAuthMode) {
+                        // Re-auth mode: just close and show success
+                        showToast('Re-authentication completed successfully!', 'success');
+                        closeVNCModal();
+                    } else {
+                        // Initial auth mode: open configuration modal
+                        showToast('Authentication saved successfully! Opening configuration...', 'success');
+                        closeVNCModal();
 
-                    // Open configuration modal after a short delay
-                    setTimeout(() => {
-                        openConfigModal(profileName, displayName);
-                    }, 500);
+                        // Open configuration modal after a short delay
+                        setTimeout(() => {
+                            openConfigModal(profileName, displayName);
+                        }, 500);
+                    }
 
                     // Reload profiles in background
                     setTimeout(() => {
@@ -907,6 +952,112 @@ async function stopVNCAndSave() {
     );
 }
 
+// Folder Picker
+let currentFolderPath = '/';
+
+async function openFolderPicker() {
+    // Get current value or start from home
+    const currentValue = document.getElementById('config-photo-dir').value.trim();
+    currentFolderPath = currentValue || '/home';
+
+    document.getElementById('folder-picker-modal').classList.remove('hidden');
+    await loadFolderContents(currentFolderPath);
+}
+
+function closeFolderPicker() {
+    document.getElementById('folder-picker-modal').classList.add('hidden');
+}
+
+async function loadFolderContents(path) {
+    try {
+        const response = await fetch('/api/browse-directories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            showToast('Error: ' + data.error, 'error');
+            return;
+        }
+
+        currentFolderPath = data.current_path;
+        document.getElementById('folder-picker-path').value = data.current_path;
+
+        const listDiv = document.getElementById('folder-picker-list');
+        listDiv.innerHTML = '';
+
+        // Add parent directory link if not at root
+        if (data.parent_path) {
+            const parentDiv = document.createElement('div');
+            parentDiv.className = 'flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer';
+            parentDiv.onclick = () => loadFolderContents(data.parent_path);
+            parentDiv.innerHTML = `
+                <i class="fas fa-level-up-alt text-gray-500"></i>
+                <span class="font-medium text-gray-700">..</span>
+                <span class="text-xs text-gray-500">(parent directory)</span>
+            `;
+            listDiv.appendChild(parentDiv);
+        }
+
+        // Add directories
+        if (data.directories.length === 0) {
+            listDiv.innerHTML += '<p class="text-gray-500 text-sm p-4 text-center">No subdirectories found</p>';
+        } else {
+            data.directories.forEach(dir => {
+                const dirDiv = document.createElement('div');
+                dirDiv.className = 'flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer';
+
+                if (dir.unreadable) {
+                    dirDiv.className += ' opacity-50';
+                    dirDiv.innerHTML = `
+                        <i class="fas fa-folder text-gray-400"></i>
+                        <span class="flex-1 text-gray-500">${dir.name}</span>
+                        <span class="text-xs text-red-500"><i class="fas fa-lock"></i> No permission</span>
+                    `;
+                } else {
+                    dirDiv.onclick = () => loadFolderContents(dir.path);
+                    dirDiv.innerHTML = `
+                        <i class="fas fa-folder text-yellow-500"></i>
+                        <span class="flex-1">${dir.name}</span>
+                        <i class="fas fa-chevron-right text-gray-400"></i>
+                    `;
+                }
+
+                listDiv.appendChild(dirDiv);
+            });
+        }
+
+        // Update info
+        const infoText = data.directories.length === 1
+            ? '1 directory'
+            : `${data.directories.length} directories`;
+        const filesText = data.files_count > 0 ? `, ${data.files_count} files` : '';
+        document.getElementById('folder-picker-info').textContent = infoText + filesText;
+
+    } catch (error) {
+        console.error('Error loading folder contents:', error);
+        showToast('Error loading directory contents', 'error');
+    }
+}
+
+async function navigateToPath() {
+    const path = document.getElementById('folder-picker-path').value.trim();
+    if (path) {
+        await loadFolderContents(path);
+    }
+}
+
+function selectCurrentFolder() {
+    document.getElementById('config-photo-dir').value = currentFolderPath;
+    closeFolderPicker();
+    showToast('Directory selected: ' + currentFolderPath, 'success');
+}
+
 // Handle Enter key in profile name input
 document.addEventListener('DOMContentLoaded', function() {
     const input = document.getElementById('profile-name-input');
@@ -914,6 +1065,16 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 createNewProfile();
+            }
+        });
+    }
+
+    // Handle Enter key in folder picker path input
+    const folderInput = document.getElementById('folder-picker-path');
+    if (folderInput) {
+        folderInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                navigateToPath();
             }
         });
     }
