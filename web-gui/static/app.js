@@ -163,6 +163,10 @@ async function loadContainers() {
                             <i class="fas fa-rotate"></i> Restart
                         </button>
                         ${container.profile !== 'default' ? `
+                            <button onclick="reAuthProfile('${container.profile}', '${container.display_name || container.name}')"
+                                    class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm">
+                                <i class="fas fa-key"></i> Re-Auth
+                            </button>
                             <button onclick="editProfileConfig('${container.profile}', '${container.display_name || container.name}')"
                                     class="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 text-sm">
                                 <i class="fas fa-cog"></i> Edit Config
@@ -624,6 +628,7 @@ function openConfigModal(profileName, displayName) {
     document.getElementById('config-workers').value = 6;
     document.getElementById('config-albums').value = '';
     document.getElementById('config-timezone').value = 'Europe/Rome';
+    document.getElementById('config-photo-dir').value = '';
 
     // Advanced options defaults
     document.getElementById('config-puid').value = 1000;
@@ -666,6 +671,7 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-workers').value = config.worker_count || 6;
         document.getElementById('config-albums').value = config.albums || '';
         document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
+        document.getElementById('config-photo-dir').value = config.photo_dir || '';
 
         // Advanced options
         document.getElementById('config-puid').value = config.puid || 1000;
@@ -791,10 +797,34 @@ async function saveConfiguration() {
 // VNC Authentication
 let currentAuthProfileNum = null;
 let currentAuthProfileName = null;
+let isReAuthMode = false;
 
 function startVNCAuth(profileName, displayName) {
     currentAuthProfileNum = profileName; // Store profile name instead of number
     currentAuthProfileName = displayName;
+    isReAuthMode = false;
+    document.getElementById('vnc-profile-name').textContent = displayName;
+    document.getElementById('vnc-auth-modal').classList.remove('hidden');
+
+    // Reset UI
+    document.getElementById('vnc-status').classList.remove('hidden');
+    document.getElementById('vnc-running').classList.add('hidden');
+}
+
+async function reAuthProfile(profileName, displayName) {
+    // First, stop any existing VNC container to avoid profile confusion
+    try {
+        await fetch('/api/stop-auth', { method: 'POST' });
+        // Wait a moment for the container to fully stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+        // Ignore errors if no VNC is running
+        console.log('No existing VNC to stop, continuing...');
+    }
+
+    currentAuthProfileNum = profileName;
+    currentAuthProfileName = displayName;
+    isReAuthMode = true;
     document.getElementById('vnc-profile-name').textContent = displayName;
     document.getElementById('vnc-auth-modal').classList.remove('hidden');
 
@@ -815,7 +845,12 @@ async function startVNCContainer() {
     startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting VNC...';
 
     try {
-        const response = await fetch(`/api/start-auth/${currentAuthProfileNum}`, {
+        // Use different endpoint based on whether it's re-auth or initial auth
+        const endpoint = isReAuthMode
+            ? `/api/reauth-profile/${currentAuthProfileNum}`
+            : `/api/start-auth/${currentAuthProfileNum}`;
+
+        const response = await fetch(endpoint, {
             method: 'POST'
         });
 
@@ -831,7 +866,10 @@ async function startVNCContainer() {
             const currentHost = window.location.hostname;
             vncLink.href = `http://${currentHost}:6080`;
 
-            showToast('VNC container started successfully', 'success');
+            const message = isReAuthMode
+                ? 'VNC container started for re-authentication'
+                : 'VNC container started successfully';
+            showToast(message, 'success');
         } else {
             showToast('Error starting VNC: ' + (data.error || 'Unknown error'), 'error');
             startBtn.disabled = false;
@@ -873,18 +911,24 @@ async function stopVNCAndSave() {
                 const data = await response.json();
 
                 if (data.status === 'stopped') {
-                    showToast('Authentication saved successfully! Opening configuration...', 'success');
-
                     // Save profile info before closing VNC modal
                     const profileName = currentAuthProfileNum; // This is the profile name (e.g., "family")
                     const displayName = currentAuthProfileName; // This is the display name (e.g., "Family Photos")
 
-                    closeVNCModal();
+                    if (isReAuthMode) {
+                        // Re-auth mode: just close and show success
+                        showToast('Re-authentication completed successfully!', 'success');
+                        closeVNCModal();
+                    } else {
+                        // Initial auth mode: open configuration modal
+                        showToast('Authentication saved successfully! Opening configuration...', 'success');
+                        closeVNCModal();
 
-                    // Open configuration modal after a short delay
-                    setTimeout(() => {
-                        openConfigModal(profileName, displayName);
-                    }, 500);
+                        // Open configuration modal after a short delay
+                        setTimeout(() => {
+                            openConfigModal(profileName, displayName);
+                        }, 500);
+                    }
 
                     // Reload profiles in background
                     setTimeout(() => {
