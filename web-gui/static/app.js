@@ -956,9 +956,9 @@ async function stopVNCAndSave() {
 let currentFolderPath = '/';
 
 async function openFolderPicker() {
-    // Get current value or start from root
+    // Get current value or start from home
     const currentValue = document.getElementById('config-photo-dir').value.trim();
-    currentFolderPath = currentValue || '/workspace';
+    currentFolderPath = currentValue || '/home';
 
     document.getElementById('folder-picker-modal').classList.remove('hidden');
     await loadFolderContents(currentFolderPath);

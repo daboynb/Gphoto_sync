@@ -995,17 +995,28 @@ def browse_directories():
     from flask import request
 
     data = request.get_json() or {}
-    current_path = data.get('path', '/')
+    requested_path = data.get('path', '/')
 
     try:
+        # Map the requested path to the host mount point
+        # The host filesystem is mounted at /host in the container
+        if requested_path.startswith('/host'):
+            # Already using host prefix
+            container_path = requested_path
+        else:
+            # Convert user path to container path
+            # User sees: /home/user/photos
+            # Container needs: /host/home/user/photos
+            container_path = os.path.join('/host', requested_path.lstrip('/'))
+
         # Resolve to absolute path
-        path = os.path.abspath(current_path)
+        container_path = os.path.abspath(container_path)
 
         # Security check: ensure path exists and is a directory
-        if not os.path.exists(path):
+        if not os.path.exists(container_path):
             return jsonify({'error': 'Path does not exist'}), 404
 
-        if not os.path.isdir(path):
+        if not os.path.isdir(container_path):
             return jsonify({'error': 'Path is not a directory'}), 400
 
         # List directories
@@ -1013,34 +1024,44 @@ def browse_directories():
         files_count = 0
 
         try:
-            entries = os.listdir(path)
+            entries = os.listdir(container_path)
             for entry in sorted(entries):
-                entry_path = os.path.join(path, entry)
+                entry_container_path = os.path.join(container_path, entry)
                 try:
-                    if os.path.isdir(entry_path):
+                    if os.path.isdir(entry_container_path):
                         # Check if readable
-                        os.listdir(entry_path)
+                        os.listdir(entry_container_path)
+
+                        # Convert back to user-facing path (remove /host prefix)
+                        entry_user_path = entry_container_path.replace('/host', '', 1) or '/'
+
                         directories.append({
                             'name': entry,
-                            'path': entry_path
+                            'path': entry_user_path
                         })
                     else:
                         files_count += 1
                 except PermissionError:
                     # Skip directories we can't read
+                    entry_user_path = entry_container_path.replace('/host', '', 1) or '/'
                     directories.append({
                         'name': entry,
-                        'path': entry_path,
+                        'path': entry_user_path,
                         'unreadable': True
                     })
         except PermissionError:
             return jsonify({'error': 'Permission denied'}), 403
 
         # Get parent directory
-        parent_path = os.path.dirname(path) if path != '/' else None
+        parent_container_path = os.path.dirname(container_path)
+        parent_user_path = parent_container_path.replace('/host', '', 1) or '/'
+        parent_path = parent_user_path if parent_user_path != container_path.replace('/host', '', 1) else None
+
+        # Convert current path back to user-facing format
+        current_user_path = container_path.replace('/host', '', 1) or '/'
 
         return jsonify({
-            'current_path': path,
+            'current_path': current_user_path,
             'parent_path': parent_path,
             'directories': directories,
             'files_count': files_count
