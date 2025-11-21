@@ -75,6 +75,10 @@ def get_profile_metadata(profile_name):
 def check_sync_status(container):
     """Check if the container has completed sync by looking at logs"""
     try:
+        # If container is not running, return stopped
+        if container.status != 'running':
+            return 'stopped'
+
         # Get last 100 lines of logs (enough to find SYNC COMPLETED)
         logs = container.logs(tail=100).decode('utf-8', errors='ignore')
 
@@ -87,11 +91,7 @@ def check_sync_status(container):
             return 'syncing'
 
         # If container is running but no clear indication
-        if container.status == 'running':
-            return 'idle'
-
-        # Container is not running
-        return 'stopped'
+        return 'idle'
     except Exception as e:
         # If we can't get logs, return unknown
         return 'unknown'
@@ -303,6 +303,7 @@ def create_compose(profile_name):
     timezone = config.get('timezone', 'Europe/Rome')
     puid = config.get('puid', 1000)
     pgid = config.get('pgid', 1000)
+    photo_dir = config.get('photo_dir', '')
 
     # Advanced options
     restart_schedule = config.get('restart_schedule', '')
@@ -349,6 +350,14 @@ def create_compose(profile_name):
     # Build command line if cron is disabled
     command_line = "    command: no-cron\n" if not enable_cron else ""
 
+    # Determine photo directory (custom or default)
+    if photo_dir and photo_dir.strip():
+        # Use custom directory (user-provided absolute path)
+        download_dir = photo_dir.strip()
+    else:
+        # Use default directory
+        download_dir = f'{workspace_path}/photos/{profile_name}'
+
     # Use restart: "no" for no-cron mode, otherwise unless-stopped
     restart_policy = '"no"' if not enable_cron else "unless-stopped"
 
@@ -360,7 +369,7 @@ def create_compose(profile_name):
     privileged: true
     volumes:
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
-      - {workspace_path}/photos/{profile_name}:/download
+      - {download_dir}:/download
     environment:
 {chr(10).join(env_vars)}
     networks:
@@ -376,6 +385,24 @@ networks:
     try:
         with open(compose_file, 'w') as f:
             f.write(compose_content)
+
+        # Save photo_dir in profile metadata for later retrieval
+        metadata_file = f'/workspace/profiles/{profile_name}/.profile_metadata.json'
+        try:
+            if os.path.exists(metadata_file):
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {'name': profile_name, 'display_name': profile_name}
+
+            # Update metadata with photo_dir
+            metadata['photo_dir'] = photo_dir if photo_dir and photo_dir.strip() else ''
+
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+        except Exception as meta_error:
+            # Don't fail if metadata update fails, just log it
+            print(f"Warning: Could not update metadata: {meta_error}")
 
         return jsonify({
             'status': 'created',
@@ -466,6 +493,20 @@ def get_config(profile_name):
         # Reconstruct full healthcheck URL if both parts are present
         if healthcheck_host and healthcheck_id:
             config['healthcheck_url'] = f"{healthcheck_host}/{healthcheck_id}"
+
+        # Extract photo_dir from volumes
+        volumes = service_config.get('volumes', [])
+        config['photo_dir'] = ''
+        for volume in volumes:
+            if isinstance(volume, str) and ':/download' in volume:
+                # Extract the host path (before the colon)
+                host_path = volume.split(':')[0]
+                # Check if it's a custom directory (not the default pattern)
+                workspace_path = get_host_workspace_path()
+                default_path = f'{workspace_path}/photos/{profile_name}'
+                if host_path != default_path:
+                    config['photo_dir'] = host_path
+                break
 
         return jsonify(config)
     except Exception as e:
@@ -714,6 +755,68 @@ def start_auth(profile_name):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/reauth-profile/<profile_name>', methods=['POST'])
+def reauth_profile(profile_name):
+    """Re-authenticate a running profile by loading it in VNC"""
+    import subprocess
+
+    container_name = f'gphotos-sync-{profile_name}'
+
+    # Check if profile directory exists
+    if not os.path.exists(f'/workspace/profiles/{profile_name}'):
+        return jsonify({'error': f'Profile directory {profile_name} not found'}), 404
+
+    try:
+        # Get PUID and PGID from environment or use defaults
+        puid = os.getenv('PUID', '1000')
+        pgid = os.getenv('PGID', '1000')
+
+        # Get the host path for the profile
+        host_workspace = get_host_workspace_path()
+        profile_dir = f'{host_workspace}/profiles/{profile_name}'
+
+        # IMPORTANT: Stop any existing auth container first to avoid reusing wrong profile
+        subprocess.run(
+            ['docker', 'compose', '-f', 'docker-compose.yml', 'down'],
+            cwd='/workspace/auth',
+            capture_output=True,
+            timeout=30
+        )
+
+        # Start the auth container with the profile to re-authenticate
+        result = subprocess.run(
+            ['docker', 'compose', '-f', 'docker-compose.yml', 'up', '-d', '--force-recreate'],
+            cwd='/workspace/auth',
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={
+                **os.environ,
+                'PROFILE_DIR': profile_dir,
+                'PUID': str(puid),
+                'PGID': str(pgid)
+            }
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'started',
+                'profile_name': profile_name,
+                'vnc_url': 'http://localhost:6080',
+                'message': f'VNC container started for re-authentication of {profile_name}',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': f'Failed to start VNC container for re-auth',
+                'output': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Command timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/stop-auth', methods=['POST'])
 def stop_auth():
     """Stop VNC authentication container"""
@@ -885,6 +988,66 @@ def delete_profile_files(profile_name):
             'success': success_messages,
             'errors': errors
         }), 500
+
+@app.route('/api/browse-directories', methods=['POST'])
+def browse_directories():
+    """Browse directories on the host system"""
+    from flask import request
+
+    data = request.get_json() or {}
+    current_path = data.get('path', '/')
+
+    try:
+        # Resolve to absolute path
+        path = os.path.abspath(current_path)
+
+        # Security check: ensure path exists and is a directory
+        if not os.path.exists(path):
+            return jsonify({'error': 'Path does not exist'}), 404
+
+        if not os.path.isdir(path):
+            return jsonify({'error': 'Path is not a directory'}), 400
+
+        # List directories
+        directories = []
+        files_count = 0
+
+        try:
+            entries = os.listdir(path)
+            for entry in sorted(entries):
+                entry_path = os.path.join(path, entry)
+                try:
+                    if os.path.isdir(entry_path):
+                        # Check if readable
+                        os.listdir(entry_path)
+                        directories.append({
+                            'name': entry,
+                            'path': entry_path
+                        })
+                    else:
+                        files_count += 1
+                except PermissionError:
+                    # Skip directories we can't read
+                    directories.append({
+                        'name': entry,
+                        'path': entry_path,
+                        'unreadable': True
+                    })
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+
+        # Get parent directory
+        parent_path = os.path.dirname(path) if path != '/' else None
+
+        return jsonify({
+            'current_path': path,
+            'parent_path': parent_path,
+            'directories': directories,
+            'files_count': files_count
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)

@@ -200,9 +200,15 @@
                         <label class="block text-sm font-medium text-gray-700 mb-2">
                             <i class="fas fa-folder"></i> Photo Download Directory (Optional)
                         </label>
-                        <input type="text" id="config-photo-dir"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="Leave empty for default or enter absolute path (e.g., /mnt/nas/photos)">
+                        <div class="flex gap-2">
+                            <input type="text" id="config-photo-dir"
+                                   class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="Leave empty for default or enter absolute path (e.g., /mnt/nas/photos)">
+                            <button type="button" onclick="openFolderPicker()"
+                                    class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                                <i class="fas fa-folder-open"></i> Browse
+                            </button>
+                        </div>
                         <p class="text-xs text-gray-500 mt-1">Custom directory for downloaded photos. Leave empty to use default (photos/profile_name)</p>
                     </div>
 
@@ -381,6 +387,48 @@
                 <button id="confirm-no" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
                     Cancel
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folder Picker Modal -->
+    <div id="folder-picker-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-folder-open text-blue-500"></i>
+                    Select Photo Directory
+                </h2>
+                <button onclick="closeFolderPicker()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-4 border-b bg-gray-50">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-700">Current path:</span>
+                    <input type="text" id="folder-picker-path"
+                           class="flex-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                           placeholder="/path/to/directory">
+                    <button onclick="navigateToPath()" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
+                        <i class="fas fa-arrow-right"></i> Go
+                    </button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+                <div id="folder-picker-list" class="space-y-1">
+                    <!-- Directories will be loaded here -->
+                </div>
+            </div>
+            <div class="p-4 border-t bg-gray-50 flex justify-between items-center">
+                <span class="text-sm text-gray-600" id="folder-picker-info"></span>
+                <div class="flex gap-3">
+                    <button onclick="selectCurrentFolder()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                        <i class="fas fa-check"></i> Select This Folder
+                    </button>
+                    <button onclick="closeFolderPicker()" class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
     </div>

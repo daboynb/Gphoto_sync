@@ -724,6 +724,7 @@ async function saveConfiguration() {
         worker_count: parseInt(document.getElementById('config-workers').value),
         albums: document.getElementById('config-albums').value.trim(),
         timezone: document.getElementById('config-timezone').value.trim(),
+        photo_dir: document.getElementById('config-photo-dir').value.trim(),
 
         // Advanced options
         puid: parseInt(document.getElementById('config-puid').value),
@@ -951,6 +952,112 @@ async function stopVNCAndSave() {
     );
 }
 
+// Folder Picker
+let currentFolderPath = '/';
+
+async function openFolderPicker() {
+    // Get current value or start from root
+    const currentValue = document.getElementById('config-photo-dir').value.trim();
+    currentFolderPath = currentValue || '/workspace';
+
+    document.getElementById('folder-picker-modal').classList.remove('hidden');
+    await loadFolderContents(currentFolderPath);
+}
+
+function closeFolderPicker() {
+    document.getElementById('folder-picker-modal').classList.add('hidden');
+}
+
+async function loadFolderContents(path) {
+    try {
+        const response = await fetch('/api/browse-directories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            showToast('Error: ' + data.error, 'error');
+            return;
+        }
+
+        currentFolderPath = data.current_path;
+        document.getElementById('folder-picker-path').value = data.current_path;
+
+        const listDiv = document.getElementById('folder-picker-list');
+        listDiv.innerHTML = '';
+
+        // Add parent directory link if not at root
+        if (data.parent_path) {
+            const parentDiv = document.createElement('div');
+            parentDiv.className = 'flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer';
+            parentDiv.onclick = () => loadFolderContents(data.parent_path);
+            parentDiv.innerHTML = `
+                <i class="fas fa-level-up-alt text-gray-500"></i>
+                <span class="font-medium text-gray-700">..</span>
+                <span class="text-xs text-gray-500">(parent directory)</span>
+            `;
+            listDiv.appendChild(parentDiv);
+        }
+
+        // Add directories
+        if (data.directories.length === 0) {
+            listDiv.innerHTML += '<p class="text-gray-500 text-sm p-4 text-center">No subdirectories found</p>';
+        } else {
+            data.directories.forEach(dir => {
+                const dirDiv = document.createElement('div');
+                dirDiv.className = 'flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer';
+
+                if (dir.unreadable) {
+                    dirDiv.className += ' opacity-50';
+                    dirDiv.innerHTML = `
+                        <i class="fas fa-folder text-gray-400"></i>
+                        <span class="flex-1 text-gray-500">${dir.name}</span>
+                        <span class="text-xs text-red-500"><i class="fas fa-lock"></i> No permission</span>
+                    `;
+                } else {
+                    dirDiv.onclick = () => loadFolderContents(dir.path);
+                    dirDiv.innerHTML = `
+                        <i class="fas fa-folder text-yellow-500"></i>
+                        <span class="flex-1">${dir.name}</span>
+                        <i class="fas fa-chevron-right text-gray-400"></i>
+                    `;
+                }
+
+                listDiv.appendChild(dirDiv);
+            });
+        }
+
+        // Update info
+        const infoText = data.directories.length === 1
+            ? '1 directory'
+            : `${data.directories.length} directories`;
+        const filesText = data.files_count > 0 ? `, ${data.files_count} files` : '';
+        document.getElementById('folder-picker-info').textContent = infoText + filesText;
+
+    } catch (error) {
+        console.error('Error loading folder contents:', error);
+        showToast('Error loading directory contents', 'error');
+    }
+}
+
+async function navigateToPath() {
+    const path = document.getElementById('folder-picker-path').value.trim();
+    if (path) {
+        await loadFolderContents(path);
+    }
+}
+
+function selectCurrentFolder() {
+    document.getElementById('config-photo-dir').value = currentFolderPath;
+    closeFolderPicker();
+    showToast('Directory selected: ' + currentFolderPath, 'success');
+}
+
 // Handle Enter key in profile name input
 document.addEventListener('DOMContentLoaded', function() {
     const input = document.getElementById('profile-name-input');
@@ -958,6 +1065,16 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 createNewProfile();
+            }
+        });
+    }
+
+    // Handle Enter key in folder picker path input
+    const folderInput = document.getElementById('folder-picker-path');
+    if (folderInput) {
+        folderInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                navigateToPath();
             }
         });
     }
