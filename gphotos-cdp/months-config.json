@@ -1,0 +1,12 @@
+{
+  "it": {
+    "months": ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"],
+    "metadataFormat": "Foto - Verticale - 21 nov 2025, 17:56:20",
+    "dateFormat": "eu (day month year)"
+  },
+  "en": {
+    "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "metadataFormat": "Photo - Portrait - Nov 17, 2025, 11:08:35 PM",
+    "dateFormat": "en (month day, year)"
+  }
+}

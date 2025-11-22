@@ -163,6 +163,10 @@ async function loadContainers() {
                             <i class="fas fa-rotate"></i> Restart
                         </button>
                         ${container.profile !== 'default' ? `
+                            <button onclick="rebuildContainer('${container.profile}', '${container.display_name || container.name}')"
+                                    class="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm">
+                                <i class="fas fa-hammer"></i> Rebuild
+                            </button>
                             <button onclick="reAuthProfile('${container.profile}', '${container.display_name || container.name}')"
                                     class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm">
                                 <i class="fas fa-key"></i> Re-Auth
@@ -1079,6 +1083,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Rebuild container (rebuild image and recreate)
+async function rebuildContainer(profileName, displayName) {
+    showConfirm(
+        'Rebuild Container',
+        `This will rebuild the Docker image for "${displayName}" and recreate the container.\n\nThe container will be stopped, rebuilt from scratch (docker-compose up --build --force-recreate), and restarted.\n\nThis is useful after making changes to the code.\n\nContinue?`,
+        async () => {
+            showToast('Rebuilding container... This may take a minute', 'info');
+
+            try {
+                const response = await fetch(`/api/rebuild-container/${profileName}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.status === 'rebuilt') {
+                    showToast('Container rebuilt successfully!', 'success');
+
+                    // Reload everything
+                    setTimeout(() => {
+                        loadContainers();
+                        loadStats();
+                        loadAvailableProfiles();
+                    }, 1000);
+                } else {
+                    showToast('Error rebuilding container: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error rebuilding container:', error);
+                showToast('Error rebuilding container', 'error');
+            }
+        }
+    );
+}
 
 // Auto-refresh containers every 10 seconds
 setInterval(() => {

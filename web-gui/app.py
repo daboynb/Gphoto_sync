@@ -210,6 +210,42 @@ def restart_container(container_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/rebuild-container/<profile_name>', methods=['POST'])
+def rebuild_container(profile_name):
+    """Rebuild container: docker-compose up --build --force-recreate -d"""
+    import subprocess
+    try:
+        compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+
+        if not os.path.exists(compose_file):
+            return jsonify({'error': f'Compose file not found: {compose_file}'}), 404
+
+        # Run docker compose up with --build and --force-recreate
+        result = subprocess.run(
+            ['docker', 'compose', '-f', compose_file, 'up', '--build', '--force-recreate', '-d'],
+            cwd='/workspace',
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes timeout
+        )
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'rebuilt',
+                'message': 'Container rebuilt successfully',
+                'output': result.stdout
+            })
+        else:
+            return jsonify({
+                'error': f'Failed to rebuild container: {result.stderr}',
+                'returncode': result.returncode
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Rebuild timeout (5 minutes exceeded)'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/stats')
 def api_stats():
     """Get overall stats"""

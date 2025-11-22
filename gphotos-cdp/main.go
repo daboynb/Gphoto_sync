@@ -21,6 +21,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -95,6 +96,61 @@ var errUnexpectedDownload = errors.New("unexpected download")
 var fromDate time.Time
 var toDate time.Time
 var loc GPhotosLocale
+
+type MonthConfig struct {
+	Months         []string `json:"months"`
+	MetadataFormat string   `json:"metadataFormat"`
+	DateFormat     string   `json:"dateFormat"`
+}
+
+var monthsConfig map[string]MonthConfig
+var pageLanguage string
+
+func getConfiguredLanguages() string {
+	languages := make([]string, 0, len(monthsConfig))
+	for lang := range monthsConfig {
+		languages = append(languages, lang)
+	}
+	if len(languages) == 0 {
+		return "none"
+	}
+	return strings.Join(languages, ", ")
+}
+
+func loadMonthsConfig() error {
+	configPath := filepath.Join(filepath.Dir(os.Args[0]), "months-config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf(`months-config.json not found at %s
+
+This file is required for parsing photo dates in different languages.
+
+To create it:
+1. Open Google Photos in your browser
+2. Click on a photo, then click the "i" (Info) button
+3. Open browser Console (F12)
+4. Run the script from console-extract.js (found in parent directory)
+5. Use add-locale-to-config.sh to add the output to months-config.json
+
+See MONTHS-CONFIG-README.md for detailed instructions.`, configPath)
+	}
+
+	if err := json.Unmarshal(data, &monthsConfig); err != nil {
+		return fmt.Errorf("error parsing months-config.json: %w\n\nThe file exists but contains invalid JSON. Please check the format.", err)
+	}
+
+	if len(monthsConfig) == 0 {
+		return fmt.Errorf("months-config.json is empty. Please add at least one language configuration using add-locale-to-config.sh")
+	}
+
+	languages := make([]string, 0, len(monthsConfig))
+	for lang := range monthsConfig {
+		languages = append(languages, lang)
+	}
+	log.Info().Msgf("Loaded month configurations for languages: %s", strings.Join(languages, ", "))
+
+	return nil
+}
 
 func main() {
 	zerolog.TimestampFieldName = "dt"
@@ -188,13 +244,19 @@ func main() {
 
 	s.checkLanguage(startupCtx)
 
+	// Load months configuration
+	if err := loadMonthsConfig(); err != nil {
+		log.Fatal().Msgf("failed to load months config: %v", err)
+	}
+
 	initLocales()
 	_loc, exists := locales[locale]
 	if !exists {
-		log.Warn().Msgf("your Google account is using unsupported locale %s, this is likely to cause issues. Please change account language to English (en) or another supported locale", locale)
+		log.Warn().Msgf("your Google account locale %s not found in locales.yaml (used for UI labels, not date parsing)", locale)
+		log.Warn().Msg("Using default English locale for UI labels. This should not affect month parsing.")
 		loc = locales["en"]
 	} else {
-		log.Info().Msgf("using locale %s", locale)
+		log.Info().Msgf("using locale %s for UI labels", locale)
 		loc = _loc
 	}
 
@@ -350,8 +412,8 @@ func (s *Session) NewWindow() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserDataDir(s.profileDir),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("lang", "en-US,en"),
-		chromedp.Flag("accept-lang", "en-US,en"),
+		// Do NOT force language - let Chrome use user's configured language
+		// We now support any language via months-config.json
 		chromedp.Flag("window-size", "1920,1080"),
 		chromedp.Flag("enable-logging", true),
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36"),
@@ -597,11 +659,14 @@ func (s *Session) getLocale(ctx context.Context) (string, error) {
 	)
 
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to detect account locale, will assume English (en)")
-		return "en", nil
+		return "", fmt.Errorf("failed to detect page language: %w - this is required for date parsing", err)
 	}
 
 	log.Info().Msgf("detected page locale: %s", locale)
+
+	// Store page language for month parsing
+	pageLanguage = locale
+
 	return locale, nil
 }
 
@@ -626,14 +691,19 @@ func (s *Session) checkLanguage(ctx context.Context) {
 		browserLangs = "unknown"
 	}
 
-	// Check if page is in English as expected
-	if htmlLang == "en" || htmlLang == "en-US" {
-		log.Info().Msgf("✓ Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
-	} else if htmlLang != "unknown" && htmlLang != "" {
-		log.Warn().Msgf("✗ Page language: %s (expected 'en') | Browser preferences: %s", htmlLang, browserLangs)
-		log.Warn().Msg("This may cause parsing errors. Check that Chrome language preferences are set to 'en-US,en'")
+	// Check if page language is supported in months-config.json
+	if htmlLang != "unknown" && htmlLang != "" {
+		if _, exists := monthsConfig[htmlLang]; exists {
+			log.Info().Msgf("✓ Page language: %s (supported) | Browser preferences: %s", htmlLang, browserLangs)
+		} else {
+			log.Warn().Msgf("✗ Page language: %s (NOT in months-config.json) | Browser preferences: %s", htmlLang, browserLangs)
+			log.Warn().Msgf("Currently configured languages: %s", getConfiguredLanguages())
+			log.Warn().Msg("You need to add this language using console-extract.js and add-locale-to-config.sh")
+			log.Warn().Msg("See MONTHS-CONFIG-README.md for instructions")
+		}
 	} else {
-		log.Info().Msgf("Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
+		log.Warn().Msgf("Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
+		log.Warn().Msg("Could not detect page language - date parsing will likely fail")
 	}
 }
 
@@ -1157,7 +1227,7 @@ func acquireTabLock(log zerolog.Logger, forWhat string) func() {
 // if it is not already open. Then we read the date from the
 // aria-label="Date taken: ?????" field.
 func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId string) (PhotoData, error) {
-	// METADATA EXTRACTION ENABLED - Now supports both English and Italian labels
+	// METADATA EXTRACTION ENABLED - Supports any language configured in months-config.json
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
@@ -1212,19 +1282,20 @@ func (s *Session) getPhotoData(ctx context.Context, log zerolog.Logger, imageId 
 			}
 
 			if len(photoInfoLabel) > 0 {
-				// Parse format:
+				// Parse format examples:
 				// Italian: "Foto - Verticale - 13 nov 2025, 00:57:41"
 				// English: "Photo - Portrait - Nov 17, 2025, 11:08:35 PM"
+				// German: "Foto - Hochformat - 13. Nov. 2025, 14:32:41"
 				parts := strings.Split(photoInfoLabel, " - ")
 				if len(parts) >= 3 {
 					dateTimeStr := parts[len(parts)-1]
 					dateTimeParts := strings.Split(dateTimeStr, ", ")
 
-					// Handle both date formats:
-					// Italian: ["13 nov 2025", "00:57:41"] (2 parts)
-					// English: ["Nov 17", "2025", "11:08:35 PM"] (3 parts)
+					// Handle different date formats:
+					// European format (day month year): ["13 nov 2025", "00:57:41"] (2 parts)
+					// English format (month day, year): ["Nov 17", "2025", "11:08:35 PM"] (3 parts)
 					if len(dateTimeParts) == 2 {
-						// Italian format
+						// European format (Italian, German, French, etc.)
 						dateStr = dateTimeParts[0]
 						timeStr = dateTimeParts[1]
 						filename = imageId
@@ -2388,38 +2459,44 @@ func parseDate(dateStr, timeStr, tzStr string) (time.Time, error) {
 	}
 	dateStr = strings.Replace(dateStr, dayStr, "", 1)
 
-	// Try to find month in current locale
-	for i, v := range loc.ShortMonthNames {
-		if strings.Contains(strings.ToUpper(dateStr), strings.ToUpper(v)) {
+	// Try to find month using page language from months-config.json
+	if pageLanguage == "" {
+		return time.Time{}, fmt.Errorf("page language not detected - cannot parse date %s", dateStr)
+	}
+
+	config, exists := monthsConfig[pageLanguage]
+	if !exists {
+		return time.Time{}, fmt.Errorf(`language "%s" not found in months-config.json
+
+The page is using language "%s" but this language is not configured.
+
+To add support for this language:
+1. Run console-extract.js in Google Photos (with language set to %s)
+2. Use add-locale-to-config.sh to add the output to months-config.json
+
+Currently configured languages: %s`, pageLanguage, pageLanguage, pageLanguage, getConfiguredLanguages())
+	}
+
+	// Find month in configured language
+	for i, v := range config.Months {
+		if strings.Contains(strings.ToLower(dateStr), strings.ToLower(v)) {
 			month = i + 1
+			log.Trace().Msgf("found month %s (index %d) in page language %s", v, month, pageLanguage)
 			break
 		}
 	}
 
-	// Fallback: try Italian month names
 	if month == 0 {
-		italianMonths := []string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"}
-		for i, v := range italianMonths {
-			if strings.Contains(strings.ToLower(dateStr), v) {
-				month = i + 1
-				break
-			}
-		}
-	}
+		return time.Time{}, fmt.Errorf(`could not find month in date string "%s" for language "%s"
 
-	// Fallback: try English month names
-	if month == 0 {
-		englishMonths := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
-		for i, v := range englishMonths {
-			if strings.Contains(strings.ToUpper(dateStr), strings.ToUpper(v)) {
-				month = i + 1
-				break
-			}
-		}
-	}
+Expected one of these month names: %s
 
-	if month == 0 {
-		return time.Time{}, fmt.Errorf("could not find month in string %s", dateStr)
+This might indicate:
+1. The months-config.json for "%s" is incorrect
+2. Google Photos changed its date format
+3. The date format is different than expected
+
+Please re-run console-extract.js and update months-config.json`, dateStr, pageLanguage, strings.Join(config.Months, ", "), pageLanguage)
 	}
 	log.Trace().Msgf("parsed month: %d, dateStr: %s", month, dateStr)
 
