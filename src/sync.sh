@@ -21,7 +21,6 @@ rm -f $PROFILE_DIR/Singleton*
 # Force English language in Chrome preferences
 PREFS_FILE="$PROFILE_DIR/Default/Preferences"
 if [ -f "$PREFS_FILE" ]; then
-  info "Forcing English language in Chrome profile"
   jq '.intl.accept_languages = "en-US,en"' "$PREFS_FILE" > "$PREFS_FILE.tmp" && mv "$PREFS_FILE.tmp" "$PREFS_FILE"
 fi
 
