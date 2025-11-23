@@ -175,10 +175,18 @@ async function loadContainers() {
                     </div>
 
                     <div class="flex gap-2 flex-wrap">
-                        <button onclick="viewLogs('${container.id}', '${container.name}')"
-                                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
-                            <i class="fas fa-file-lines"></i> View Logs
-                        </button>
+                        ${container.status === 'running' ? `
+                            <button onclick="viewLogs('${container.id}', '${container.name}')"
+                                    class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
+                                <i class="fas fa-file-lines"></i> View Logs
+                            </button>
+                        ` : `
+                            <button disabled
+                                    class="px-4 py-2 bg-gray-400 text-white rounded cursor-not-allowed text-sm"
+                                    title="Container must be running to view logs">
+                                <i class="fas fa-file-lines"></i> View Logs
+                            </button>
+                        `}
                         ${container.status === 'running' ? `
                             <button onclick="stopContainer('${container.id}')"
                                     class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm">
@@ -278,6 +286,12 @@ async function viewLogs(containerId, containerName) {
     document.getElementById('log-container-name').textContent = containerName;
     document.getElementById('log-modal').classList.remove('hidden');
 
+    // Clear previous logs
+    document.getElementById('log-content').innerHTML = '';
+
+    // Ensure auto-scroll is checked
+    document.getElementById('auto-scroll').checked = true;
+
     // Load initial logs
     try {
         const response = await fetch(`/api/container/${containerId}/logs`);
@@ -287,7 +301,11 @@ async function viewLogs(containerId, containerName) {
             const logContent = document.getElementById('log-content');
             const lines = data.logs.split('\n');
             logContent.innerHTML = lines.map(line => prettifyLogLine(line)).join('\n');
-            scrollLogsToBottom();
+
+            // Scroll to bottom after a short delay to ensure content is rendered
+            setTimeout(() => {
+                scrollLogsToBottom();
+            }, 100);
         }
     } catch (error) {
         console.error('Error loading logs:', error);
@@ -310,13 +328,46 @@ function startLogStream(containerId) {
         const newLine = prettifyLogLine(event.data);
         logContent.innerHTML += newLine + '\n';
 
+        // Always scroll to bottom (auto-scroll is always on by default)
         if (document.getElementById('auto-scroll').checked) {
-            scrollLogsToBottom();
+            // Use requestAnimationFrame for smooth scrolling
+            requestAnimationFrame(() => {
+                scrollLogsToBottom();
+            });
         }
     };
 
+    // Handle custom 'close' event from server
+    currentLogStream.addEventListener('close', function(event) {
+        console.log('Container stopped, closing log stream:', event.data);
+        const logContent = document.getElementById('log-content');
+        logContent.innerHTML += '\n[Container stopped - log stream closed]\n';
+
+        // Scroll to show the final message
+        scrollLogsToBottom();
+
+        currentLogStream.close();
+        currentLogStream = null;
+    });
+
+    // Handle custom 'error' event from server
+    currentLogStream.addEventListener('error', function(event) {
+        console.error('Server error in log stream:', event.data);
+        const logContent = document.getElementById('log-content');
+        logContent.innerHTML += `\n[Error: ${event.data}]\n`;
+        currentLogStream.close();
+        currentLogStream = null;
+    });
+
     currentLogStream.onerror = function(error) {
-        console.error('Log stream error:', error);
+        // Only log connection errors, not when container stops normally
+        if (currentLogStream && currentLogStream.readyState === EventSource.CONNECTING) {
+            console.error('Log stream connection error:', error);
+        } else if (currentLogStream) {
+            // Stream closed gracefully, clean up
+            currentLogStream.close();
+            currentLogStream = null;
+        }
     };
 }
 
@@ -331,8 +382,10 @@ function closeLogModal() {
 
 // Scroll logs to bottom
 function scrollLogsToBottom() {
-    const logContent = document.getElementById('log-content');
-    logContent.scrollTop = logContent.scrollHeight;
+    const logContainer = document.getElementById('log-container');
+    if (logContainer) {
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
 }
 
 // Download logs

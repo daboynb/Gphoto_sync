@@ -1,0 +1,57 @@
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+.animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+}
+
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #1a1a1a !important;
+}
+body.dark-mode .bg-white {
+    background-color: #2d2d2d !important;
+}
+body.dark-mode .bg-gray-100 {
+    background-color: #1a1a1a !important;
+}
+body.dark-mode .bg-gray-200 {
+    background-color: #3d3d3d !important;
+}
+body.dark-mode .text-gray-800 {
+    color: #e0e0e0 !important;
+}
+body.dark-mode .text-gray-600 {
+    color: #b0b0b0 !important;
+}
+body.dark-mode .text-gray-700 {
+    color: #c0c0c0 !important;
+}
+body.dark-mode .text-gray-500 {
+    color: #a0a0a0 !important;
+}
+body.dark-mode .shadow-md {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+body.dark-mode #theme-toggle {
+    background-color: #3d3d3d !important;
+}
+body.dark-mode #theme-toggle:hover {
+    background-color: #4d4d4d !important;
+}
+body.dark-mode strong {
+    color: #ffffff !important;
+}
+body.dark-mode .text-sm {
+    color: #e0e0e0 !important;
+}
+body.dark-mode .text-sm div {
+    color: #b0b0b0 !important;
+}
