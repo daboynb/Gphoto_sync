@@ -229,17 +229,45 @@ func (s *Session) autoExtractLanguageConfig(ctx context.Context, lang string) (*
 	}, nil
 }
 
-// saveMonthsConfig saves the months configuration to file
+// saveMonthsConfig saves the months configuration to file with compact array formatting
 func saveMonthsConfig() error {
 	// Use /app directory for config file
 	configPath := "/app/months-config.json"
 
-	data, err := json.MarshalIndent(monthsConfig, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshaling months-config.json: %w", err)
-	}
+	// Custom marshal to keep arrays on single lines
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	// Sort keys for consistent output
+	keys := make([]string, 0, len(monthsConfig))
+	for k := range monthsConfig {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	for i, lang := range keys {
+		config := monthsConfig[lang]
+
+		// Marshal months array compactly
+		monthsJSON, err := json.Marshal(config.Months)
+		if err != nil {
+			return fmt.Errorf("error marshaling months array: %w", err)
+		}
+
+		buf.WriteString(fmt.Sprintf("  %q: {\n", lang))
+		buf.WriteString(fmt.Sprintf("    \"months\": %s,\n", string(monthsJSON)))
+		buf.WriteString(fmt.Sprintf("    \"metadataFormat\": %q,\n", config.MetadataFormat))
+		buf.WriteString(fmt.Sprintf("    \"dateFormat\": %q\n", config.DateFormat))
+
+		if i < len(keys)-1 {
+			buf.WriteString("  },\n")
+		} else {
+			buf.WriteString("  }\n")
+		}
+	}
+	buf.WriteString("}\n")
+
+	if err := os.WriteFile(configPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("error writing months-config.json: %w", err)
 	}
 
