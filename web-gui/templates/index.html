@@ -20,25 +20,76 @@
         .animate-slide-in {
             animation: slide-in 0.3s ease-out;
         }
+
+        /* Dark Mode Styles */
+        body.dark-mode {
+            background-color: #1a1a1a !important;
+        }
+        body.dark-mode .bg-white {
+            background-color: #2d2d2d !important;
+        }
+        body.dark-mode .bg-gray-100 {
+            background-color: #1a1a1a !important;
+        }
+        body.dark-mode .bg-gray-200 {
+            background-color: #3d3d3d !important;
+        }
+        body.dark-mode .text-gray-800 {
+            color: #e0e0e0 !important;
+        }
+        body.dark-mode .text-gray-600 {
+            color: #b0b0b0 !important;
+        }
+        body.dark-mode .text-gray-700 {
+            color: #c0c0c0 !important;
+        }
+        body.dark-mode .text-gray-500 {
+            color: #a0a0a0 !important;
+        }
+        body.dark-mode .shadow-md {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+        }
+        body.dark-mode #theme-toggle {
+            background-color: #3d3d3d !important;
+        }
+        body.dark-mode #theme-toggle:hover {
+            background-color: #4d4d4d !important;
+        }
+        body.dark-mode strong {
+            color: #ffffff !important;
+        }
+        body.dark-mode .text-sm {
+            color: #e0e0e0 !important;
+        }
+        body.dark-mode .text-sm div {
+            color: #b0b0b0 !important;
+        }
     </style>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-100 transition-colors duration-300">
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">
-                <i class="fas fa-camera text-blue-500"></i>
-                Google Photos Sync Manager
-            </h1>
-            <div class="flex gap-4 text-sm text-gray-600">
-                <span>Total: <strong id="stat-total">0</strong></span>
-                <span class="text-green-600">Running: <strong id="stat-running">0</strong></span>
-                <span class="text-red-600">Stopped: <strong id="stat-stopped">0</strong></span>
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6 transition-colors duration-300">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                        <i class="fas fa-camera text-blue-500"></i>
+                        Google Photos Sync Manager
+                    </h1>
+                    <div class="flex gap-4 text-sm text-gray-600">
+                        <span>Total: <strong id="stat-total">0</strong></span>
+                        <span class="text-green-600">Running: <strong id="stat-running">0</strong></span>
+                        <span class="text-red-600">Stopped: <strong id="stat-stopped">0</strong></span>
+                    </div>
+                </div>
+                <button onclick="toggleDarkMode()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" id="theme-toggle">
+                    <i class="fas fa-sun"></i>
+                </button>
             </div>
         </div>
 
         <!-- Toolbar -->
-        <div class="mb-6 bg-white rounded-lg shadow-md p-4">
+        <div class="mb-6 bg-white rounded-lg shadow-md p-4 transition-colors duration-300">
             <div class="flex gap-3 items-center">
                 <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
                     <i class="fas fa-plus-circle"></i> Create New Profile

@@ -1,6 +1,38 @@
 let currentLogStream = null;
 let currentContainerId = null;
 
+// Dark Mode Toggle
+function toggleDarkMode() {
+    const body = document.body;
+    const isDark = body.classList.contains('dark-mode');
+
+    if (isDark) {
+        body.classList.remove('dark-mode');
+        document.getElementById('theme-toggle').innerHTML = '<i class="fas fa-moon"></i>';
+        localStorage.setItem('theme', 'light');
+    } else {
+        body.classList.add('dark-mode');
+        document.getElementById('theme-toggle').innerHTML = '<i class="fas fa-sun"></i>';
+        localStorage.setItem('theme', 'dark');
+    }
+}
+
+// Load theme on startup
+document.addEventListener('DOMContentLoaded', () => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+        document.body.classList.remove('dark-mode');
+        document.getElementById('theme-toggle').innerHTML = '<i class="fas fa-moon"></i>';
+    } else {
+        // Default to dark mode
+        document.body.classList.add('dark-mode');
+        document.getElementById('theme-toggle').innerHTML = '<i class="fas fa-sun"></i>';
+        if (!savedTheme) {
+            localStorage.setItem('theme', 'dark');
+        }
+    }
+});
+
 // Toast Notification System
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
