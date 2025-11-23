@@ -701,14 +701,15 @@ func (s *Session) checkLanguage(ctx context.Context) {
 		if _, exists := monthsConfig[htmlLang]; exists {
 			log.Info().Msgf("✓ Page language: %s (supported) | Browser preferences: %s", htmlLang, browserLangs)
 		} else {
-			log.Warn().Msgf("✗ Page language: %s (NOT in months-config.json) | Browser preferences: %s", htmlLang, browserLangs)
-			log.Warn().Msgf("Currently configured languages: %s", getConfiguredLanguages())
-			log.Warn().Msg("You need to add this language using console-extract.js and add-locale-to-config.sh")
-			log.Warn().Msg("See MONTHS-CONFIG-README.md for instructions")
+			log.Fatal().Msgf(`✗ Page language: %s (NOT in months-config.json) | Browser preferences: %s
+
+Currently configured languages: %s
+
+You need to add this language using console-extract.js and add-locale-to-config.sh
+See MONTHS-CONFIG-README.md for instructions`, htmlLang, browserLangs, getConfiguredLanguages())
 		}
 	} else {
-		log.Warn().Msgf("Page language: %s | Browser preferences: %s", htmlLang, browserLangs)
-		log.Warn().Msg("Could not detect page language - date parsing will likely fail")
+		log.Fatal().Msgf("Could not detect page language (detected: %s) | Browser preferences: %s\nDate parsing will fail without a known page language.", htmlLang, browserLangs)
 	}
 }
 
