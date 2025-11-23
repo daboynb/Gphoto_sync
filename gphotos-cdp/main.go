@@ -124,28 +124,32 @@ func loadMonthsConfig() error {
 		exePath = os.Args[0]
 	}
 	configPath := filepath.Join(filepath.Dir(exePath), "months-config.json")
+	log.Debug().Msgf("Looking for months-config.json at: %s", configPath)
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return fmt.Errorf(`months-config.json not found at %s
-
-This file is required for parsing photo dates in different languages.
-
-To create it:
-1. Open Google Photos in your browser
-2. Click on a photo, then click the "i" (Info) button
-3. Open browser Console (F12)
-4. Run the script from console-extract.js (found in parent directory)
-5. Use add-locale-to-config.sh to add the output to months-config.json
-
-See MONTHS-CONFIG-README.md for detailed instructions.`, configPath)
+		log.Warn().Msgf("months-config.json not found at %s - will auto-extract languages on first use", configPath)
+		// Initialize empty map
+		monthsConfig = make(map[string]MonthConfig)
+		log.Debug().Msgf("Initialized empty monthsConfig map, len=%d", len(monthsConfig))
+		return nil
 	}
+
+	log.Debug().Msgf("Read %d bytes from months-config.json", len(data))
+
+	// Initialize map before unmarshaling
+	monthsConfig = make(map[string]MonthConfig)
+	log.Debug().Msgf("Initialized monthsConfig map before unmarshal, len=%d", len(monthsConfig))
 
 	if err := json.Unmarshal(data, &monthsConfig); err != nil {
 		return fmt.Errorf("error parsing months-config.json: %w\n\nThe file exists but contains invalid JSON. Please check the format.", err)
 	}
 
+	log.Debug().Msgf("After unmarshal, monthsConfig len=%d", len(monthsConfig))
+
 	if len(monthsConfig) == 0 {
-		return fmt.Errorf("months-config.json is empty. Please add at least one language configuration using add-locale-to-config.sh")
+		log.Warn().Msg("months-config.json is empty. Languages will be auto-extracted on first use.")
+		return nil
 	}
 
 	languages := make([]string, 0, len(monthsConfig))
@@ -154,6 +158,99 @@ See MONTHS-CONFIG-README.md for detailed instructions.`, configPath)
 	}
 	log.Info().Msgf("Loaded month configurations for languages: %s", strings.Join(languages, ", "))
 
+	return nil
+}
+
+// autoExtractLanguageConfig extracts language configuration from Google Photos
+// Following exact same logic as console-extract.js
+func (s *Session) autoExtractLanguageConfig(ctx context.Context, lang string) (*MonthConfig, error) {
+	log.Info().Msgf("Auto-extracting language configuration for: %s", lang)
+
+	// Extract metadata - same as console-extract.js lines 9-12
+	var photoInfoLabel string
+	err := chromedp.Run(ctx,
+		chromedp.Sleep(2*time.Second),
+		chromedp.Evaluate(`
+			(function() {
+				let labels = [...document.querySelectorAll('[aria-label]')]
+					.map(e => e.getAttribute('aria-label'))
+					.filter(l => l && l.includes(' - '));
+				return labels.length > 0 ? labels[0] : '';
+			})()
+		`, &photoInfoLabel),
+	)
+
+	if err != nil || photoInfoLabel == "" {
+		return nil, fmt.Errorf("could not extract metadata format: %w", err)
+	}
+
+	log.Debug().Msgf("Extracted metadata format: %s", photoInfoLabel)
+
+	// Detect date format pattern - same as console-extract.js lines 34-41
+	var dateFormat string
+
+	if regexp.MustCompile(`(\d{1,2})\.\s+(\w+)\.\s+(\d{4}),`).MatchString(photoInfoLabel) {
+		dateFormat = "day. month. year"
+	} else if regexp.MustCompile(`(\w+)\s+(\d{1,2}),\s+(\d{4}),`).MatchString(photoInfoLabel) {
+		dateFormat = "month day, year"
+	} else if regexp.MustCompile(`(\d{1,2})\s+(\w+)\s+(\d{4}),`).MatchString(photoInfoLabel) {
+		dateFormat = "day month year"
+	} else {
+		return nil, fmt.Errorf("unknown date format in metadata: %s", photoInfoLabel)
+	}
+
+	// Generate months using page language - same as console-extract.js lines 44-48
+	var monthsJSON string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			(function() {
+				const months = [];
+				const pageLang = '`+lang+`';
+				for (let i = 0; i < 12; i++) {
+					const date = new Date(2024, i, 1);
+					months.push(date.toLocaleDateString(pageLang, { month: 'short' }).replace(/\./g, ''));
+				}
+				return JSON.stringify(months);
+			})()
+		`, &monthsJSON),
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not generate months: %w", err)
+	}
+
+	var months []string
+	if err := json.Unmarshal([]byte(monthsJSON), &months); err != nil {
+		return nil, fmt.Errorf("could not parse months JSON: %w", err)
+	}
+
+	log.Info().Msgf("Auto-extracted config for %s: months=%v, format=%s", lang, months, dateFormat)
+
+	return &MonthConfig{
+		Months:         months,
+		MetadataFormat: photoInfoLabel,
+		DateFormat:     dateFormat,
+	}, nil
+}
+
+// saveMonthsConfig saves the months configuration to file
+func saveMonthsConfig() error {
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = os.Args[0]
+	}
+	configPath := filepath.Join(filepath.Dir(exePath), "months-config.json")
+
+	data, err := json.MarshalIndent(monthsConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling months-config.json: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing months-config.json: %w", err)
+	}
+
+	log.Info().Msgf("Saved updated months-config.json to %s", configPath)
 	return nil
 }
 
@@ -247,12 +344,12 @@ func main() {
 		log.Fatal().Msgf("failed to get locale: %v", err)
 	}
 
-	s.checkLanguage(startupCtx)
-
-	// Load months configuration
+	// Load months configuration BEFORE checking language
 	if err := loadMonthsConfig(); err != nil {
 		log.Fatal().Msgf("failed to load months config: %v", err)
 	}
+
+	s.checkLanguage(startupCtx)
 
 	initLocales()
 	_loc, exists := locales[locale]
@@ -701,12 +798,27 @@ func (s *Session) checkLanguage(ctx context.Context) {
 		if _, exists := monthsConfig[htmlLang]; exists {
 			log.Info().Msgf("✓ Page language: %s (supported) | Browser preferences: %s", htmlLang, browserLangs)
 		} else {
-			log.Fatal().Msgf(`✗ Page language: %s (NOT in months-config.json) | Browser preferences: %s
+			// Language not in config - auto-extract it
+			log.Warn().Msgf("✗ Page language: %s (NOT in months-config.json) | Browser preferences: %s", htmlLang, browserLangs)
+			log.Warn().Msgf("Currently configured languages: %s", getConfiguredLanguages())
+			log.Info().Msgf("Attempting to auto-extract language configuration for: %s", htmlLang)
 
-Currently configured languages: %s
+			// Auto-extract language configuration
+			config, err := s.autoExtractLanguageConfig(ctx, htmlLang)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to auto-extract language configuration for %s", htmlLang)
+			}
 
-You need to add this language using console-extract.js and add-locale-to-config.sh
-See MONTHS-CONFIG-README.md for instructions`, htmlLang, browserLangs, getConfiguredLanguages())
+			// Add to monthsConfig
+			monthsConfig[htmlLang] = *config
+			pageLanguage = htmlLang
+
+			// Save to file
+			if err := saveMonthsConfig(); err != nil {
+				log.Error().Err(err).Msg("Failed to save months-config.json, but continuing with extracted config in memory")
+			}
+
+			log.Info().Msgf("✓ Successfully auto-configured language: %s", htmlLang)
 		}
 	} else {
 		log.Fatal().Msgf("Could not detect page language (detected: %s) | Browser preferences: %s\nDate parsing will fail without a known page language.", htmlLang, browserLangs)
