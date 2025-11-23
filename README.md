@@ -1,6 +1,7 @@
 # Google Photos Sync
 
 <h3>⚠️ This is a beta, expect some bugs! ⚠️</h3>
+<img width="1920" height="676" alt="image" src="https://github.com/user-attachments/assets/145f6948-4925-4cac-8f9a-73338a417d61" />
 
 **Multi-language support with automatic detection!** The tool automatically detects your Google Photos language and extracts month names. Currently configured languages are saved in a shared config file.
 
