@@ -1,6 +1,6 @@
 # Google Photos Sync
 
-**This is a beta, expect some bugs!**
+<h3>⚠️This is a beta, expect some bugs!</h3>⚠️
 
 **It supports only EN/ITA accounts right now!**
 
