@@ -2,7 +2,7 @@
 
 <h3>⚠️ This is a beta, expect some bugs! ⚠️</h3>
 
-**It supports only EN/ITA accounts right now!**
+**Multi-language support with automatic detection!** The tool automatically detects your Google Photos language and extracts month names. Currently configured languages are saved in a shared config file.
 
 Automatically download all your photos from Google Photos using Docker Compose with an intuitive Web GUI for managing multiple accounts.
 
@@ -41,9 +41,11 @@ This tool uses **Chrome DevTools Protocol (CDP)** instead of Google Photos API:
 
 1. **Manual Authentication**: Login once via VNC browser, Chrome saves session cookies
 2. **Automated Browsing**: Chrome DevTools Protocol controls headless Chrome with saved credentials
-3. **DOM Scraping**: Uses `document.querySelectorAll()` to find photos, reads `aria-label` for metadata
-4. **Keyboard Shortcuts**: Triggers downloads via `Shift+D` shortcut (faster than menu clicking)
-5. **Download Interception**: CDP monitors `browser.EventDownloadProgress` for original quality files
+3. **Language Detection**: Reads the page's `<html lang="...">` attribute to detect Google Photos language
+4. **Auto-Extract Month Names**: If language is not configured, executes JavaScript in the browser console to extract all 12 month names from Google's internal date picker, then saves them to `months-config.json` (shared across all profiles)
+5. **DOM Scraping**: Uses `document.querySelectorAll()` to find photos, reads `aria-label` for metadata (e.g., "Photo - Nov 17, 2025")
+6. **Date Parsing**: Parses dates using the extracted month names for the detected language
+7. **Keyboard Shortcuts**: Triggers downloads via `Shift+D` shortcut (faster than menu clicking)
 
 ---
 
