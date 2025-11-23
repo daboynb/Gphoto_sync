@@ -46,7 +46,7 @@ This tool uses **Chrome DevTools Protocol (CDP)** instead of Google Photos API:
 4. **Auto-Extract Month Names**: If language is not configured, executes JavaScript in the browser console to extract all 12 month names from Google's internal date picker, then saves them to `months-config.json` (shared across all profiles)
 5. **DOM Scraping**: Uses `document.querySelectorAll()` to find photos, reads `aria-label` for metadata (e.g., "Photo - Nov 17, 2025")
 6. **Date Parsing**: Parses dates using the extracted month names for the detected language
-7. **Keyboard Shortcuts**: Triggers downloads via `Shift+D` shortcut (faster than menu clicking)
+7. **Keyboard Shortcuts**: Triggers downloads via `Shift+D` shortcut
 
 ---
 
@@ -167,16 +167,3 @@ This project is a derivative work based on the following open-source projects:
 - Core sync engine using Chrome DevTools Protocol
 - Licensed under Apache License 2.0
 - Copyright © 2019 The Perkeep Authors
-
-### License
-
-This project incorporates code from projects under different licenses:
-
-- **Apache License 2.0** components from `perkeep/gphotos-cdp`
-- **MIT License** components from `JakeWharton/docker-gphotos-sync`
-
-As required by both licenses, all original copyright notices and license texts are preserved in their respective files.
-
-**This derivative work is provided "AS IS" without warranty of any kind.**
-
----
