@@ -2,13 +2,22 @@ FROM golang:1.25-bookworm AS build
 
 ENV GO111MODULE=on
 
-# Copy local gphotos-cdp source code
-COPY gphotos-cdp /build/gphotos-cdp
 WORKDIR /build/gphotos-cdp
 
+# Copy go.mod and go.sum first for better caching
+COPY gphotos-cdp/go.mod gphotos-cdp/go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the rest of the source code
+COPY gphotos-cdp/ ./
+
 # Build gphotos-cdp from local sources
-# Clean Go cache and rebuild from scratch
-RUN go clean -cache -modcache -i -r && \
+# Update go.mod for new internal packages, then clean and rebuild
+RUN go mod tidy && \
+    go clean -cache -modcache -i -r && \
+    go mod download && \
     go build -a -o /go/bin/gphotos-cdp .
 
 FROM debian:bookworm-slim
