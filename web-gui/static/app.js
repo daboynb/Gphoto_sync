@@ -1234,9 +1234,14 @@ async function rebuildDockerImage() {
                             // Update display
                             logContent.textContent = rebuildLogBuffer.join('');
 
-                            // Auto-scroll
+                            // Auto-scroll to bottom
                             if (document.getElementById('rebuild-auto-scroll').checked) {
-                                logContent.scrollTop = logContent.scrollHeight;
+                                const logContainer = document.getElementById('rebuild-log-container');
+                                if (logContainer) {
+                                    requestAnimationFrame(() => {
+                                        logContainer.scrollTop = logContainer.scrollHeight;
+                                    });
+                                }
                             }
                             break;
 
