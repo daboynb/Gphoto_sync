@@ -368,12 +368,12 @@ def rebuild_image_stream():
                             except:
                                 pass
 
-                # Second: Start with fresh image from gphotos-sync:latest
+                # Second: Create container with fresh image (without starting it)
                 msg = json.dumps({'type': 'log', 'message': f'  Creating container with fresh image...\n'})
                 yield f"data: {msg}\n\n"
 
                 recreate_process = subprocess.Popen(
-                    ['docker', 'compose', '-f', compose_file, 'up', '-d', '--pull', 'never'],
+                    ['docker', 'compose', '-f', compose_file, 'create', '--pull', 'never'],
                     cwd='/workspace',
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -390,12 +390,12 @@ def rebuild_image_stream():
                 recreate_process.wait()
 
                 if recreate_process.returncode != 0:
-                    error_msg = f'  ✗ Failed to restart {profile_name}\n'
+                    error_msg = f'  ✗ Failed to recreate {profile_name}\n'
                     restart_errors.append(error_msg)
                     msg = json.dumps({'type': 'log', 'message': error_msg})
                     yield f"data: {msg}\n\n"
                 else:
-                    msg = json.dumps({'type': 'log', 'message': f'  ✓ {profile_name} restarted successfully\n'})
+                    msg = json.dumps({'type': 'log', 'message': f'  ✓ {profile_name} recreated (use Start to run)\n'})
                     yield f"data: {msg}\n\n"
 
             # Final status
