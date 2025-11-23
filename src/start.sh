@@ -27,10 +27,28 @@ PROFILE_DIR="${PROFILE_DIR:-/tmp/gphotos-cdp}"
 mkdir -p "$DOWNLOAD_DIR" "$DOWNLOAD_DIR/tmp" "$PROFILE_DIR"
 
 # Set ownership and permissions
-chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app 2>/dev/null || true
-chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR" 2>/dev/null || true
+# For mounted volumes, we need to ensure the user inside the container can write
+if ! chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app 2>/dev/null; then
+    warning "Failed to change ownership of directories. If using custom paths, ensure host directories are owned by UID:GID ${PUID}:${PGID}"
+fi
+
+if ! chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR" 2>/dev/null; then
+    warning "Failed to change permissions of directories. Some operations may fail."
+fi
+
+# Ensure Profile directory subdirectories exist and are writable
+mkdir -p "$PROFILE_DIR/Default" 2>/dev/null || true
+chown -R abc:abc "$PROFILE_DIR/Default" 2>/dev/null || true
+chmod -R 755 "$PROFILE_DIR/Default" 2>/dev/null || true
 
 info "download dir permissions: $(ls -ld $DOWNLOAD_DIR)"
+info "profile dir permissions: $(ls -ld $PROFILE_DIR)"
+
+# Verify that abc user can actually write to profile directory
+if ! sudo -u abc test -w "$PROFILE_DIR"; then
+    warning "Profile directory $PROFILE_DIR is not writable by user abc (UID ${PUID})"
+    warning "This may cause login issues. Please run on host: sudo chown -R ${PUID}:${PGID} <your_custom_profile_path>"
+fi
 
 if [[ "$1" == 'no-cron' ]]; then
     sudo -E -u abc sh /app/sync.sh

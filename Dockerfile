@@ -49,8 +49,8 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /go/bin/gphotos-cdp /usr/bin/
-COPY --from=build /build/gphotos-cdp/months-config.json /usr/bin/
 COPY src ./app/
+COPY --from=build /build/gphotos-cdp/months-config.json /app/
 RUN chmod +x /app/*.sh
 
 USER root

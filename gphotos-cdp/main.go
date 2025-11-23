@@ -118,12 +118,8 @@ func getConfiguredLanguages() string {
 }
 
 func loadMonthsConfig() error {
-	// Try to find the executable path
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = os.Args[0]
-	}
-	configPath := filepath.Join(filepath.Dir(exePath), "months-config.json")
+	// Use /app directory for config file
+	configPath := "/app/months-config.json"
 	log.Debug().Msgf("Looking for months-config.json at: %s", configPath)
 
 	data, err := os.ReadFile(configPath)
@@ -235,11 +231,8 @@ func (s *Session) autoExtractLanguageConfig(ctx context.Context, lang string) (*
 
 // saveMonthsConfig saves the months configuration to file
 func saveMonthsConfig() error {
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = os.Args[0]
-	}
-	configPath := filepath.Join(filepath.Dir(exePath), "months-config.json")
+	// Use /app directory for config file
+	configPath := "/app/months-config.json"
 
 	data, err := json.MarshalIndent(monthsConfig, "", "  ")
 	if err != nil {
