@@ -352,21 +352,37 @@ function startLogStream(containerId) {
 
     // Handle custom 'error' event from server
     currentLogStream.addEventListener('error', function(event) {
-        console.error('Server error in log stream:', event.data);
-        const logContent = document.getElementById('log-content');
-        logContent.innerHTML += `\n[Error: ${event.data}]\n`;
-        currentLogStream.close();
-        currentLogStream = null;
+        if (event.data) {
+            console.error('Server error in log stream:', event.data);
+            const logContent = document.getElementById('log-content');
+            logContent.innerHTML += `\n[Error: ${event.data}]\n`;
+        }
+        if (currentLogStream) {
+            currentLogStream.close();
+            currentLogStream = null;
+        }
     });
 
     currentLogStream.onerror = function(error) {
-        // Only log connection errors, not when container stops normally
-        if (currentLogStream && currentLogStream.readyState === EventSource.CONNECTING) {
-            console.error('Log stream connection error:', error);
-        } else if (currentLogStream) {
-            // Stream closed gracefully, clean up
-            currentLogStream.close();
-            currentLogStream = null;
+        // Silently handle stream closure when container stops
+        // This is normal behavior, not an error
+        if (currentLogStream) {
+            const readyState = currentLogStream.readyState;
+
+            // EventSource.CLOSED = 2, means stream ended normally
+            if (readyState === EventSource.CLOSED || readyState === 2) {
+                // Stream closed normally (container stopped), just clean up
+                currentLogStream.close();
+                currentLogStream = null;
+            }
+            // EventSource.CONNECTING = 0, means reconnecting after error
+            else if (readyState === EventSource.CONNECTING || readyState === 0) {
+                console.warn('Log stream reconnecting...');
+            }
+            // EventSource.OPEN = 1, unexpected error while open
+            else {
+                console.error('Unexpected log stream error:', error);
+            }
         }
     };
 }
