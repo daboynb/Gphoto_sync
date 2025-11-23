@@ -417,8 +417,8 @@ func (s *Session) NewWindow() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserDataDir(s.profileDir),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		// Do NOT force language - let Chrome use user's configured language
-		// We now support any language via months-config.json
+		chromedp.Flag("lang", "en-US,en"),
+		chromedp.Flag("accept-lang", "en-US,en"),
 		chromedp.Flag("window-size", "1920,1080"),
 		chromedp.Flag("enable-logging", true),
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36"),
