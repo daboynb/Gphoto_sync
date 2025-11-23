@@ -7,7 +7,9 @@ COPY gphotos-cdp /build/gphotos-cdp
 WORKDIR /build/gphotos-cdp
 
 # Build gphotos-cdp from local sources
-RUN go build -o /go/bin/gphotos-cdp .
+# Clean Go cache and rebuild from scratch
+RUN go clean -cache -modcache -i -r && \
+    go build -a -o /go/bin/gphotos-cdp .
 
 FROM debian:bookworm-slim
 

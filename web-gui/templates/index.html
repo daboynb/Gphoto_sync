@@ -37,11 +37,16 @@
             </div>
         </div>
 
-        <!-- Create New Profile Button -->
-        <div class="mb-6">
-            <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
-                <i class="fas fa-plus-circle"></i> Create New Profile
-            </button>
+        <!-- Toolbar -->
+        <div class="mb-6 bg-white rounded-lg shadow-md p-4">
+            <div class="flex gap-3 items-center">
+                <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                    <i class="fas fa-plus-circle"></i> Create New Profile
+                </button>
+                <button onclick="rebuildDockerImage()" class="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 shadow-md">
+                    <i class="fas fa-hammer"></i> Rebuild Docker Image
+                </button>
+            </div>
         </div>
 
         <!-- Available Profiles (not started) -->
@@ -386,6 +391,50 @@
                 </button>
                 <button id="confirm-no" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
                     Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rebuild Progress Modal -->
+    <div id="rebuild-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[80vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-hammer text-orange-500"></i>
+                    Rebuilding Docker Image
+                </h2>
+                <button id="rebuild-close-btn" onclick="closeRebuildModal()" class="text-gray-500 hover:text-gray-700 hidden">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Status indicator -->
+            <div id="rebuild-status" class="p-4 bg-blue-50 border-b">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-spinner fa-spin text-blue-600 text-xl"></i>
+                    <div>
+                        <p class="font-semibold text-blue-900" id="rebuild-status-text">Starting build...</p>
+                        <p class="text-sm text-blue-700" id="rebuild-status-detail">Please wait, this may take a few minutes</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Build log output -->
+            <div class="flex-1 overflow-y-auto p-4 bg-gray-900">
+                <div id="rebuild-log-truncated" class="hidden mb-2 px-3 py-2 bg-yellow-900 text-yellow-200 text-xs rounded">
+                    <i class="fas fa-info-circle"></i> Showing last 100 lines only. Download full log when complete.
+                </div>
+                <pre id="rebuild-log" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+            </div>
+
+            <div class="p-4 border-t flex justify-between">
+                <label class="flex items-center text-sm text-gray-600">
+                    <input type="checkbox" id="rebuild-auto-scroll" checked class="mr-2">
+                    Auto-scroll
+                </label>
+                <button id="rebuild-download-btn" onclick="downloadRebuildLog()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 hidden">
+                    <i class="fas fa-download"></i> Download Log
                 </button>
             </div>
         </div>

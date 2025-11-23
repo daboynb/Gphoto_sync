@@ -210,41 +210,210 @@ def restart_container(container_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/rebuild-container/<profile_name>', methods=['POST'])
-def rebuild_container(profile_name):
-    """Rebuild container: docker-compose up --build --force-recreate -d"""
+@app.route('/api/rebuild-image/stream', methods=['GET'])
+def rebuild_image_stream():
+    """Stream rebuild progress in real-time using Server-Sent Events"""
     import subprocess
-    try:
-        compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    import time
 
-        if not os.path.exists(compose_file):
-            return jsonify({'error': f'Compose file not found: {compose_file}'}), 404
+    def generate():
+        try:
+            # Send initial status
+            msg = json.dumps({'type': 'status', 'message': 'Starting Docker image rebuild...'})
+            yield f"data: {msg}\n\n"
+            time.sleep(0.5)
 
-        # Run docker compose up with --build and --force-recreate
-        result = subprocess.run(
-            ['docker', 'compose', '-f', compose_file, 'up', '--build', '--force-recreate', '-d'],
-            cwd='/workspace',
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minutes timeout
-        )
+            # Step 0: Remove ALL related images to force complete rebuild
+            msg = json.dumps({'type': 'status', 'message': 'Removing old images...'})
+            yield f"data: {msg}\n\n"
+            msg = json.dumps({'type': 'log', 'message': '=== Cleaning Old Images ===\n'})
+            yield f"data: {msg}\n\n"
 
-        if result.returncode == 0:
-            return jsonify({
-                'status': 'rebuilt',
-                'message': 'Container rebuilt successfully',
-                'output': result.stdout
-            })
-        else:
-            return jsonify({
-                'error': f'Failed to rebuild container: {result.stderr}',
-                'returncode': result.returncode
-            }), 500
+            # Remove gphotos-sync images
+            prune_process = subprocess.Popen(
+                ['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}', '--filter', 'reference=*gphotos-sync*'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True
+            )
 
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Rebuild timeout (5 minutes exceeded)'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            images_to_remove = []
+            for line in iter(prune_process.stdout.readline, ''):
+                if line.strip():
+                    images_to_remove.append(line.strip())
+            prune_process.wait()
+
+            # Remove each image
+            for img in images_to_remove:
+                msg = json.dumps({'type': 'log', 'message': f'Removing image: {img}\n'})
+                yield f"data: {msg}\n\n"
+                subprocess.run(['docker', 'rmi', '-f', img], capture_output=True)
+
+            msg = json.dumps({'type': 'log', 'message': f'Removed {len(images_to_remove)} old images\n\n'})
+            yield f"data: {msg}\n\n"
+
+            # Remove dangling images (untagged images that may be cached)
+            msg = json.dumps({'type': 'log', 'message': 'Removing dangling images...\n'})
+            yield f"data: {msg}\n\n"
+
+            try:
+                prune_result = docker_client.images.prune(filters={'dangling': True})
+                msg = json.dumps({'type': 'log', 'message': f'Removed {len(prune_result.get("ImagesDeleted", []))} dangling images\n\n'})
+                yield f"data: {msg}\n\n"
+            except Exception as e:
+                msg = json.dumps({'type': 'log', 'message': f'Warning: could not prune dangling images: {str(e)}\n\n'})
+                yield f"data: {msg}\n\n"
+
+            # Step 1: Build the new Docker image with streaming output
+            msg = json.dumps({'type': 'status', 'message': 'Building Docker image (this may take a few minutes)...'})
+            yield f"data: {msg}\n\n"
+            msg = json.dumps({'type': 'log', 'message': '=== Building Docker Image ===\n'})
+            yield f"data: {msg}\n\n"
+
+            build_process = subprocess.Popen(
+                ['docker', 'build', '--no-cache', '-t', 'gphotos-sync:latest', '.'],
+                cwd='/workspace',
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+
+            # Stream build output line by line
+            for line in iter(build_process.stdout.readline, ''):
+                if line:
+                    msg = json.dumps({'type': 'log', 'message': line})
+                    yield f"data: {msg}\n\n"
+
+            build_process.wait()
+
+            if build_process.returncode != 0:
+                msg = json.dumps({'type': 'error', 'message': 'Docker build failed!'})
+                yield f"data: {msg}\n\n"
+                return
+
+            msg = json.dumps({'type': 'log', 'message': '\n✓ Docker image built successfully!\n\n'})
+            yield f"data: {msg}\n\n"
+
+            # Step 2: Get ALL containers (running or stopped)
+            msg = json.dumps({'type': 'status', 'message': 'Checking containers...'})
+            yield f"data: {msg}\n\n"
+
+            containers = get_sync_containers()
+            all_profiles = []
+
+            for container in containers:
+                profile_name = container.name.replace(get_container_prefix() + '-', '', 1)
+                all_profiles.append(profile_name)
+
+            if not all_profiles:
+                msg = json.dumps({'type': 'log', 'message': 'No containers found to recreate.\n'})
+                yield f"data: {msg}\n\n"
+                msg = json.dumps({'type': 'complete', 'message': 'Rebuild completed successfully!', 'restarted_count': 0})
+                yield f"data: {msg}\n\n"
+                return
+
+            msg = json.dumps({'type': 'log', 'message': f'Found {len(all_profiles)} containers to recreate.\n\n'})
+            yield f"data: {msg}\n\n"
+
+            # Step 3: Recreate ALL containers with new image
+            msg = json.dumps({'type': 'status', 'message': f'Recreating {len(all_profiles)} containers...'})
+            yield f"data: {msg}\n\n"
+            msg = json.dumps({'type': 'log', 'message': '=== Recreating Containers ===\n'})
+            yield f"data: {msg}\n\n"
+
+            restart_errors = []
+            for i, profile_name in enumerate(all_profiles, 1):
+                compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+
+                msg = json.dumps({'type': 'log', 'message': f'[{i}/{len(all_profiles)}] Recreating {profile_name}...\n'})
+                yield f"data: {msg}\n\n"
+
+                if not os.path.exists(compose_file):
+                    error_msg = f'  ✗ Compose file not found for {profile_name}\n'
+                    restart_errors.append(error_msg)
+                    msg = json.dumps({'type': 'log', 'message': error_msg})
+                    yield f"data: {msg}\n\n"
+                    continue
+
+                # First: Stop and remove the old container
+                msg = json.dumps({'type': 'log', 'message': f'  Stopping old container...\n'})
+                yield f"data: {msg}\n\n"
+
+                # Stop and remove container
+                try:
+                    container = docker_client.containers.get(f'gphotos-sync-{profile_name}')
+                    container.stop(timeout=10)
+                    container.remove()
+                    msg = json.dumps({'type': 'log', 'message': f'    Container stopped and removed\n'})
+                    yield f"data: {msg}\n\n"
+                except docker.errors.NotFound:
+                    msg = json.dumps({'type': 'log', 'message': f'    Container not found (already removed)\n'})
+                    yield f"data: {msg}\n\n"
+
+                # Remove any cached images for this service
+                msg = json.dumps({'type': 'log', 'message': f'  Removing cached images...\n'})
+                yield f"data: {msg}\n\n"
+
+                # Get all images related to this profile
+                all_images = docker_client.images.list()
+                for img in all_images:
+                    for tag in img.tags:
+                        # Remove images that match this profile or any docker-compose generated ones
+                        if profile_name in tag.lower() and 'gphotos-sync' in tag.lower():
+                            try:
+                                docker_client.images.remove(tag, force=True)
+                                msg = json.dumps({'type': 'log', 'message': f'    Removed image: {tag}\n'})
+                                yield f"data: {msg}\n\n"
+                            except:
+                                pass
+
+                # Second: Start with fresh image from gphotos-sync:latest
+                msg = json.dumps({'type': 'log', 'message': f'  Creating container with fresh image...\n'})
+                yield f"data: {msg}\n\n"
+
+                recreate_process = subprocess.Popen(
+                    ['docker', 'compose', '-f', compose_file, 'up', '-d', '--pull', 'never'],
+                    cwd='/workspace',
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                    bufsize=1
+                )
+
+                # Stream recreate output
+                for line in iter(recreate_process.stdout.readline, ''):
+                    if line:
+                        msg = json.dumps({'type': 'log', 'message': '  ' + line})
+                        yield f"data: {msg}\n\n"
+
+                recreate_process.wait()
+
+                if recreate_process.returncode != 0:
+                    error_msg = f'  ✗ Failed to restart {profile_name}\n'
+                    restart_errors.append(error_msg)
+                    msg = json.dumps({'type': 'log', 'message': error_msg})
+                    yield f"data: {msg}\n\n"
+                else:
+                    msg = json.dumps({'type': 'log', 'message': f'  ✓ {profile_name} restarted successfully\n'})
+                    yield f"data: {msg}\n\n"
+
+            # Final status
+            if restart_errors:
+                msg = json.dumps({'type': 'warning', 'message': f'Rebuild completed with {len(restart_errors)} errors'})
+                yield f"data: {msg}\n\n"
+            else:
+                msg = json.dumps({'type': 'log', 'message': f'\n✓ All {len(all_profiles)} containers recreated successfully!\n'})
+                yield f"data: {msg}\n\n"
+
+            msg = json.dumps({'type': 'complete', 'message': 'Rebuild completed!', 'restarted_count': len(all_profiles), 'error_count': len(restart_errors)})
+            yield f"data: {msg}\n\n"
+
+        except Exception as e:
+            msg = json.dumps({'type': 'error', 'message': f'Error: {str(e)}'})
+            yield f"data: {msg}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/api/stats')
 def api_stats():
@@ -559,13 +728,13 @@ def start_profile(profile_name):
         return jsonify({'error': f'docker-compose.{profile_name}.yml not found'}), 404
 
     try:
-        # Run docker compose up -d
+        # Run docker compose up -d with --build to ensure it uses the latest base image
         result = subprocess.run(
-            ['docker', 'compose', '-f', compose_file, 'up', '-d'],
+            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--build'],
             cwd='/workspace',
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120  # Increased timeout for build
         )
 
         if result.returncode == 0:
@@ -638,11 +807,11 @@ def recreate_profile(profile_name):
 
         # Step 2: Start the container using docker-compose (reads new config from yaml)
         result = subprocess.run(
-            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--no-recreate'],
+            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--build'],
             cwd='/workspace',
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120  # Increased timeout for build
         )
 
         if result.returncode == 0:

@@ -163,10 +163,6 @@ async function loadContainers() {
                             <i class="fas fa-rotate"></i> Restart
                         </button>
                         ${container.profile !== 'default' ? `
-                            <button onclick="rebuildContainer('${container.profile}', '${container.display_name || container.name}')"
-                                    class="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm">
-                                <i class="fas fa-hammer"></i> Rebuild
-                            </button>
                             <button onclick="reAuthProfile('${container.profile}', '${container.display_name || container.name}')"
                                     class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm">
                                 <i class="fas fa-key"></i> Re-Auth
@@ -1084,36 +1080,177 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Rebuild container (rebuild image and recreate)
-async function rebuildContainer(profileName, displayName) {
+// Rebuild Docker image (global - compiles gphotos-cdp and rebuilds image)
+let rebuildEventSource = null;
+let rebuildLogBuffer = []; // Display buffer (limited)
+let rebuildFullLog = [];   // Full log for download
+const MAX_LOG_LINES = 100; // Keep only last 100 lines in display
+
+async function rebuildDockerImage() {
     showConfirm(
-        'Rebuild Container',
-        `This will rebuild the Docker image for "${displayName}" and recreate the container.\n\nThe container will be stopped, rebuilt from scratch (docker-compose up --build --force-recreate), and restarted.\n\nThis is useful after making changes to the code.\n\nContinue?`,
+        'Rebuild Docker Image',
+        `This will:\n- Compile the latest gphotos-cdp code\n- Rebuild the Docker image from scratch\n- Restart ALL running containers with the new image\n\nThis process may take 2-3 minutes.\n\nContinue?`,
         async () => {
-            showToast('Rebuilding container... This may take a minute', 'info');
+            // Open rebuild modal
+            document.getElementById('rebuild-modal').classList.remove('hidden');
+            document.getElementById('rebuild-log').textContent = '';
+            document.getElementById('rebuild-close-btn').classList.add('hidden');
+            document.getElementById('rebuild-download-btn').classList.add('hidden');
+            document.getElementById('rebuild-log-truncated').classList.add('hidden');
 
-            try {
-                const response = await fetch(`/api/rebuild-container/${profileName}`, { method: 'POST' });
-                const data = await response.json();
+            // Reset log buffers
+            rebuildLogBuffer = [];
+            rebuildFullLog = [];
 
-                if (data.status === 'rebuilt') {
-                    showToast('Container rebuilt successfully!', 'success');
+            // Update status
+            updateRebuildStatus('Building Docker image...', 'Please wait, this may take a few minutes', 'building');
 
-                    // Reload everything
-                    setTimeout(() => {
-                        loadContainers();
-                        loadStats();
-                        loadAvailableProfiles();
-                    }, 1000);
-                } else {
-                    showToast('Error rebuilding container: ' + (data.error || 'Unknown error'), 'error');
+            // Start streaming rebuild log
+            rebuildEventSource = new EventSource('/api/rebuild-image/stream');
+
+            rebuildEventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    const logContent = document.getElementById('rebuild-log');
+
+                    switch(data.type) {
+                        case 'status':
+                            updateRebuildStatus(data.message, 'In progress...', 'building');
+                            break;
+
+                        case 'log':
+                            // Add to full log (unlimited)
+                            rebuildFullLog.push(data.message);
+
+                            // Add to display buffer and keep only last MAX_LOG_LINES
+                            rebuildLogBuffer.push(data.message);
+                            if (rebuildLogBuffer.length > MAX_LOG_LINES) {
+                                rebuildLogBuffer.shift();
+                                // Show truncation warning
+                                document.getElementById('rebuild-log-truncated').classList.remove('hidden');
+                            }
+
+                            // Update display
+                            logContent.textContent = rebuildLogBuffer.join('');
+
+                            // Auto-scroll
+                            if (document.getElementById('rebuild-auto-scroll').checked) {
+                                logContent.scrollTop = logContent.scrollHeight;
+                            }
+                            break;
+
+                        case 'error':
+                            updateRebuildStatus('Build Failed', data.message, 'error');
+                            rebuildEventSource.close();
+                            enableRebuildClose();
+                            showToast('Build failed! Check the log for details.', 'error');
+                            break;
+
+                        case 'warning':
+                            updateRebuildStatus('Completed with warnings', data.message, 'warning');
+                            rebuildEventSource.close();
+                            enableRebuildClose();
+                            showToast(data.message, 'warning');
+                            reloadContainersAfterRebuild();
+                            break;
+
+                        case 'complete':
+                            updateRebuildStatus('Build Completed Successfully!',
+                                `Successfully rebuilt image and restarted ${data.restarted_count} containers`,
+                                'success');
+                            rebuildEventSource.close();
+                            enableRebuildClose();
+                            showToast('Docker image rebuilt successfully!', 'success');
+                            reloadContainersAfterRebuild();
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Error parsing rebuild event:', e);
                 }
-            } catch (error) {
-                console.error('Error rebuilding container:', error);
-                showToast('Error rebuilding container', 'error');
-            }
+            };
+
+            rebuildEventSource.onerror = function(error) {
+                console.error('Rebuild stream error:', error);
+                updateRebuildStatus('Stream Error', 'Connection to rebuild stream lost', 'error');
+                rebuildEventSource.close();
+                enableRebuildClose();
+                showToast('Error during rebuild. Check logs.', 'error');
+            };
         }
     );
+}
+
+function updateRebuildStatus(title, detail, status) {
+    const statusDiv = document.getElementById('rebuild-status');
+    const titleEl = document.getElementById('rebuild-status-text');
+    const detailEl = document.getElementById('rebuild-status-detail');
+
+    titleEl.textContent = title;
+    detailEl.textContent = detail;
+
+    // Update colors based on status
+    statusDiv.className = 'p-4 border-b';
+    const iconEl = statusDiv.querySelector('i');
+
+    switch(status) {
+        case 'building':
+            statusDiv.classList.add('bg-blue-50');
+            titleEl.className = 'font-semibold text-blue-900';
+            detailEl.className = 'text-sm text-blue-700';
+            iconEl.className = 'fas fa-spinner fa-spin text-blue-600 text-xl';
+            break;
+        case 'success':
+            statusDiv.classList.add('bg-green-50');
+            titleEl.className = 'font-semibold text-green-900';
+            detailEl.className = 'text-sm text-green-700';
+            iconEl.className = 'fas fa-check-circle text-green-600 text-xl';
+            break;
+        case 'error':
+            statusDiv.classList.add('bg-red-50');
+            titleEl.className = 'font-semibold text-red-900';
+            detailEl.className = 'text-sm text-red-700';
+            iconEl.className = 'fas fa-exclamation-circle text-red-600 text-xl';
+            break;
+        case 'warning':
+            statusDiv.classList.add('bg-yellow-50');
+            titleEl.className = 'font-semibold text-yellow-900';
+            detailEl.className = 'text-sm text-yellow-700';
+            iconEl.className = 'fas fa-exclamation-triangle text-yellow-600 text-xl';
+            break;
+    }
+}
+
+function enableRebuildClose() {
+    document.getElementById('rebuild-close-btn').classList.remove('hidden');
+    document.getElementById('rebuild-download-btn').classList.remove('hidden');
+}
+
+function closeRebuildModal() {
+    if (rebuildEventSource) {
+        rebuildEventSource.close();
+        rebuildEventSource = null;
+    }
+    document.getElementById('rebuild-modal').classList.add('hidden');
+}
+
+function downloadRebuildLog() {
+    // Use full log for download, not just the displayed buffer
+    const logs = rebuildFullLog.join('');
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rebuild-log-${new Date().toISOString()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function reloadContainersAfterRebuild() {
+    setTimeout(() => {
+        loadContainers();
+        loadStats();
+        loadAvailableProfiles();
+    }, 2000);
 }
 
 // Auto-refresh containers every 10 seconds
