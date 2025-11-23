@@ -1,0 +1,188 @@
+<!-- Profile Configuration Modal -->
+<div id="config-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-800">
+                <i class="fas fa-cog text-blue-600"></i>
+                Configure Profile - <span id="config-profile-name"></span>
+            </h2>
+            <button onclick="closeConfigModal()" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="space-y-4">
+            <!-- Enable Cron -->
+            <div>
+                <label class="flex items-center">
+                    <input type="checkbox" id="config-enable-cron" checked
+                           class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                           onchange="toggleCronSchedule()">
+                    <span class="text-sm font-medium text-gray-700">
+                        <i class="fas fa-calendar-check"></i> Enable Automatic Sync Schedule
+                    </span>
+                </label>
+                <div class="ml-6 mt-1">
+                    <p class="text-xs text-gray-500">
+                        <strong>Checked:</strong> Container runs continuously, syncing on schedule (cron) and/or at startup
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        <strong>Unchecked:</strong> Container runs once at startup, then exits (manual mode - no automatic syncing)
+                    </p>
+                </div>
+            </div>
+
+            <!-- Cron Schedule -->
+            <div id="cron-schedule-container">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-clock"></i> Sync Schedule (Cron)
+                </label>
+                <input type="text" id="config-cron"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="0 3 * * *" value="0 3 * * *">
+                <p class="text-xs text-gray-500 mt-1">Cron expression (e.g., "0 3 * * *" = daily at 3 AM)</p>
+            </div>
+
+            <!-- Run on Startup -->
+            <div id="run-on-startup-container">
+                <label class="flex items-center">
+                    <input type="checkbox" id="config-run-on-startup" checked
+                           class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <span class="text-sm font-medium text-gray-700">
+                        <i class="fas fa-rocket"></i> Run sync on container startup
+                    </span>
+                </label>
+                <p class="text-xs text-gray-500 ml-6">Sync immediately when container starts, then continue with schedule</p>
+            </div>
+
+            <!-- Log Level -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-file-alt"></i> Log Level
+                </label>
+                <select id="config-loglevel"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="error">Error</option>
+                    <option value="warn">Warning</option>
+                    <option value="info" selected>Info</option>
+                    <option value="debug">Debug</option>
+                </select>
+            </div>
+
+            <!-- Worker Count -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-users"></i> Parallel Downloads (Workers)
+                </label>
+                <input type="number" id="config-workers" min="1" max="20" value="6"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-gray-500 mt-1">Number of parallel download workers (1-20, default: 6)</p>
+            </div>
+
+            <!-- Albums -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-images"></i> Albums to Sync
+                </label>
+                <input type="text" id="config-albums"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="ALL or album1,album2,album3">
+                <p class="text-xs text-gray-500 mt-1">Leave empty or "ALL" for entire library, or comma-separated album IDs</p>
+            </div>
+
+            <!-- Timezone -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-globe"></i> Timezone
+                </label>
+                <input type="text" id="config-timezone" value="Europe/Rome"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="Europe/Rome">
+                <p class="text-xs text-gray-500 mt-1">Timezone for scheduled syncs (e.g., Europe/Rome, America/New_York)</p>
+            </div>
+
+            <!-- Custom Photo Directory -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-folder"></i> Photo Download Directory (Optional)
+                </label>
+                <div class="flex gap-2">
+                    <input type="text" id="config-photo-dir"
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Leave empty for default or enter absolute path (e.g., /mnt/nas/photos)">
+                    <button type="button" onclick="openFolderPicker()"
+                            class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                        <i class="fas fa-folder-open"></i> Browse
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Custom directory for downloaded photos. Leave empty to use default (photos/profile_name)</p>
+            </div>
+
+            <!-- Advanced Options (Collapsible) -->
+            <div class="border-t pt-4">
+                <button type="button" onclick="toggleAdvancedOptions()"
+                        class="flex items-center justify-between w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900">
+                    <span>
+                        <i class="fas fa-cog"></i> Advanced Options
+                    </span>
+                    <i id="advanced-toggle-icon" class="fas fa-chevron-down transition-transform"></i>
+                </button>
+
+                <div id="advanced-options" class="hidden mt-4 space-y-4">
+                    <!-- PUID/PGID -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-user"></i> User ID (PUID)
+                            </label>
+                            <input type="number" id="config-puid" min="1000" value="1000"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">User ID for file ownership</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-users"></i> Group ID (PGID)
+                            </label>
+                            <input type="number" id="config-pgid" min="1000" value="1000"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">Group ID for file ownership</p>
+                        </div>
+                    </div>
+
+                    <!-- Restart Schedule -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-redo"></i> Restart Schedule (Optional)
+                        </label>
+                        <input type="text" id="config-restart-schedule"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="0 0 1 * * (monthly restart)">
+                        <p class="text-xs text-gray-500 mt-1">Cron schedule to delete .lastdone files and force full re-sync</p>
+                    </div>
+
+                    <!-- Healthcheck -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-heartbeat"></i> Healthcheck URL (Optional)
+                        </label>
+                        <input type="text" id="config-healthcheck-url"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="https://hc-ping.com/your-uuid">
+                        <p class="text-xs text-gray-500 mt-1">Full healthcheck.io ping URL for monitoring (e.g., https://hc-ping.com/abc-123)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+            <button id="config-save-btn" onclick="saveConfiguration()"
+                    class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                <i class="fas fa-save"></i> <span id="config-save-text">Create Docker Compose</span>
+            </button>
+            <button onclick="closeConfigModal()"
+                    class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Photos Sync Manager</title>
+    <link rel="icon" type="image/svg+xml" href="/static/camera.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="bg-gray-100 transition-colors duration-300">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6 transition-colors duration-300">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                        <i class="fas fa-camera text-blue-500"></i>
+                        Google Photos Sync Manager
+                    </h1>
+                    <div class="flex gap-4 text-sm text-gray-600">
+                        <span>Total: <strong id="stat-total">0</strong></span>
+                        <span class="text-green-600">Running: <strong id="stat-running">0</strong></span>
+                        <span class="text-red-600">Stopped: <strong id="stat-stopped">0</strong></span>
+                    </div>
+                </div>
+                <button onclick="toggleDarkMode()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" id="theme-toggle">
+                    <i class="fas fa-sun"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="mb-6 bg-white rounded-lg shadow-md p-4 transition-colors duration-300">
+            <div class="flex gap-3 items-center">
+                <button onclick="openCreateProfileModal()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
+                    <i class="fas fa-plus-circle"></i> Create New Profile
+                </button>
+                <button onclick="rebuildDockerImage()" class="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 shadow-md">
+                    <i class="fas fa-hammer"></i> Rebuild Docker Image
+                </button>
+            </div>
+        </div>
+
+        <!-- Available Profiles (not started) -->
+        <div id="available-profiles" class="mb-6"></div>
+
+        <!-- Containers List -->
+        <div id="containers-list" class="space-y-4">
+            <!-- Containers will be loaded here -->
+        </div>
+
+        {% include 'modals/create_profile.html' %}
+        {% include 'modals/config.html' %}
+        {% include 'modals/vnc.html' %}
+        {% include 'modals/logs.html' %}
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    {% include 'modals/confirm.html' %}
+    {% include 'modals/rebuild.html' %}
+    {% include 'modals/folder_picker.html' %}
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
