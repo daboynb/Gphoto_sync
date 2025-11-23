@@ -25,21 +25,30 @@ type NewDownload struct {
 	ProgressChan      chan bool
 }
 
+// DownloadedIdsManager interface for managing downloaded image IDs
+type DownloadedIdsManager interface {
+	Has(id string) bool
+	Add(id string) error
+	GetAll() []string
+	Count() int
+}
+
 // Session manages the Chrome session and download state
 type Session struct {
-	ParentContext    context.Context
-	ChromeExecCancel context.CancelFunc
-	DownloadDir      string
-	DownloadDirTmp   string
-	ProfileDir       string
-	GlobalErrChan    chan error
-	UserPath         string
-	AlbumPath        string
-	ExistingItems    sync.Map
-	FoundItems       sync.Map
-	DownloadedItems  sync.Map
-	NewDownloadChan  chan NewDownload
-	SkippedCount     uint64
+	ParentContext      context.Context
+	ChromeExecCancel   context.CancelFunc
+	DownloadDir        string
+	DownloadDirTmp     string
+	ProfileDir         string
+	GlobalErrChan      chan error
+	UserPath           string
+	AlbumPath          string
+	ExistingItems      sync.Map // Deprecated: use DownloadedIds instead
+	FoundItems         sync.Map
+	DownloadedItems    sync.Map
+	DownloadedIds      DownloadedIdsManager // New: tracks downloaded IDs in file
+	NewDownloadChan    chan NewDownload
+	SkippedCount       uint64
 }
 
 // ContextLocks manages locks for tab navigation

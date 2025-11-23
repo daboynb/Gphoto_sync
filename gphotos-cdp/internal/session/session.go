@@ -20,6 +20,7 @@ import (
 
 	"gphotos-cdp/internal/config"
 	"gphotos-cdp/internal/types"
+	"gphotos-cdp/internal/utils"
 )
 
 const (
@@ -88,6 +89,12 @@ func NewSession(downloadDirFlag, profileFlag, albumIdFlag *string) (*types.Sessi
 		return nil, err
 	}
 
+	// Initialize downloaded IDs manager
+	downloadedIds, err := utils.NewDownloadedIdsManager(downloadDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create downloaded IDs manager: %w", err)
+	}
+
 	s := &types.Session{
 		ProfileDir:      dir,
 		DownloadDir:     downloadDir,
@@ -96,13 +103,17 @@ func NewSession(downloadDirFlag, profileFlag, albumIdFlag *string) (*types.Sessi
 		UserPath:        userPath,
 		AlbumPath:       albumPath,
 		NewDownloadChan: make(chan types.NewDownload),
+		DownloadedIds:   downloadedIds,
 	}
 
+	// Legacy: Load existing directories into ExistingItems (for CheckForRemovedFiles compatibility)
 	for _, e := range downloadDirEntries {
 		if e.IsDir() && e.Name() != "tmp" {
 			s.ExistingItems.Store(e.Name(), struct{}{})
 		}
 	}
+
+	log.Info().Msgf("Loaded %d previously downloaded items", downloadedIds.Count())
 
 	return s, nil
 }

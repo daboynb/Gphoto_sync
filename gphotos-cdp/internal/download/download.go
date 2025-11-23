@@ -226,7 +226,7 @@ func ProcessDownload(s *types.Session, log zerolog.Logger, downloadInfo types.Ne
 	log.Trace().Msgf("entering processDownload")
 	start := time.Now()
 
-	outDir, err := makeOutDir(s, imageId)
+	outDir, err := makeOutDir(s, imageId, data.Date)
 	if err != nil {
 		return err
 	}
@@ -282,6 +282,11 @@ func ProcessDownload(s *types.Session, log zerolog.Logger, downloadInfo types.Ne
 
 	log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("processed downloaded item")
 	log.Info().Msgf("downloaded file(s) %s with date %v", strings.Join(baseNames, ", "), data.Date.Format("2006-01-02"))
+
+	// Mark this item as downloaded
+	if err := s.DownloadedIds.Add(imageId); err != nil {
+		log.Warn().Err(err).Msgf("failed to save downloaded ID %s to file, but download succeeded", imageId)
+	}
 
 	return nil
 }
@@ -586,12 +591,18 @@ func pressButton(ctx context.Context, key string, modifier input.Modifier) error
 	return nil
 }
 
-// makeOutDir creates a directory in s.DownloadDir named of the item ID
-func makeOutDir(s *types.Session, imageId string) (string, error) {
-	newDir := filepath.Join(s.DownloadDir, imageId)
+// makeOutDir creates a directory organized by date: YYYY/MM/
+func makeOutDir(s *types.Session, imageId string, date time.Time) (string, error) {
+	// Create directory structure: DownloadDir/YYYY/MM/
+	year := date.Format("2006")
+	month := date.Format("01")
+
+	newDir := filepath.Join(s.DownloadDir, year, month)
 	if err := os.MkdirAll(newDir, 0700); err != nil {
 		return "", err
 	}
+
+	log.Debug().Msgf("Created output directory for date %s: %s", date.Format("2006-01"), newDir)
 	return newDir, nil
 }
 

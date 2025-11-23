@@ -25,7 +25,6 @@ import (
 	"gphotos-cdp/internal/navigation"
 	"gphotos-cdp/internal/session"
 	"gphotos-cdp/internal/types"
-	"gphotos-cdp/internal/utils"
 )
 
 // Resync the library/album of photos
@@ -296,13 +295,10 @@ func IsNewItem(s *types.Session, log zerolog.Logger, imageId string, markFound b
 		return false, nil
 	}
 
-	isNew := true
-	hasFiles, err := utils.DirHasFiles(s.DownloadDir, imageId)
-	if err != nil {
-		return false, err
-	} else if hasFiles {
-		log.Trace().Msgf("skipping item, already downloaded")
-		isNew = false
+	// Check if this item has already been downloaded using the new system
+	isNew := !s.DownloadedIds.Has(imageId)
+	if !isNew {
+		log.Trace().Msgf("skipping item, already downloaded (found in .downloaded_ids.txt)")
 	}
 
 	if markFound || !isNew {
