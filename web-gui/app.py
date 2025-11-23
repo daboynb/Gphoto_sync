@@ -586,6 +586,7 @@ def create_compose(profile_name):
     privileged: true
     volumes:
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
+      - {workspace_path}/gphotos-cdp/months-config.json:/app/months-config.json
       - {download_dir}:/download
     environment:
 {chr(10).join(env_vars)}
