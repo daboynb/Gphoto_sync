@@ -270,8 +270,20 @@ def rebuild_image_stream():
             msg = json.dumps({'type': 'log', 'message': '=== Building Docker Image ===\n'})
             yield f"data: {msg}\n\n"
 
+            # Get current timestamp for build version
+            from datetime import datetime
+            build_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            image_version = datetime.now().strftime('%Y%m%d-%H%M%S')
+
             build_process = subprocess.Popen(
-                ['docker', 'build', '--no-cache', '-t', 'gphotos-sync:latest', '.'],
+                [
+                    'docker', 'build',
+                    '--no-cache',
+                    '--build-arg', f'BUILD_DATE={build_date}',
+                    '--build-arg', f'IMAGE_VERSION={image_version}',
+                    '-t', 'gphotos-sync:latest',
+                    '.'
+                ],
                 cwd='/workspace',
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

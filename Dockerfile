@@ -13,6 +13,9 @@ RUN go clean -cache -modcache -i -r && \
 
 FROM debian:bookworm-slim
 
+ARG BUILD_DATE="unknown"
+ARG IMAGE_VERSION="dev"
+
 ENV \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -26,7 +29,9 @@ ENV \
     ALBUMS= \
     WORKER_COUNT=6 \
     GPHOTOS_CDP_ARGS= \
-    RUN_ON_STARTUP=false
+    RUN_ON_STARTUP=false \
+    BUILD_DATE=${BUILD_DATE} \
+    IMAGE_VERSION=${IMAGE_VERSION}
 
 RUN apt-get update && apt-get install -y \
         apt-transport-https \
@@ -44,6 +49,7 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /go/bin/gphotos-cdp /usr/bin/
+COPY --from=build /build/gphotos-cdp/months-config.json /usr/bin/
 COPY src ./app/
 RUN chmod +x /app/*.sh
 

@@ -17,6 +17,7 @@ adduser abc --uid "${PUID}" --gid "${PGID}" --disabled-password --gecos "" --qui
 )
 
 info "running with user uid: $(id -u abc) and user gid: $(id -g abc)"
+info "Image version: ${IMAGE_VERSION:-unknown} | Built: ${BUILD_DATE:-unknown}"
 
 # Ensure download and profile directories exist and have correct permissions
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-/download}"

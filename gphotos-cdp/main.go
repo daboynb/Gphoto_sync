@@ -118,7 +118,12 @@ func getConfiguredLanguages() string {
 }
 
 func loadMonthsConfig() error {
-	configPath := filepath.Join(filepath.Dir(os.Args[0]), "months-config.json")
+	// Try to find the executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = os.Args[0]
+	}
+	configPath := filepath.Join(filepath.Dir(exePath), "months-config.json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf(`months-config.json not found at %s
