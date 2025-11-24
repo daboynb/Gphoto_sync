@@ -1,5 +1,11 @@
 FROM dorowu/ubuntu-desktop-lxde-vnc
 
+# BUILDARCH,commented out for now
+#FROM dorowu/ubuntu-desktop-lxde-vnc:focal AS base-amd64
+#FROM dorowu/ubuntu-desktop-lxde-vnc:focal-arm64 AS base-arm64
+#FROM base-${BUILDARCH} AS final
+#ARG BUILDARCH
+
 # Setup environment variables
 ENV HOME=/home/abc \
     USER=abc \
