@@ -1,6 +1,11 @@
 let currentLogStream = null;
 let currentContainerId = null;
 
+// Mini-terminal streams for each container
+let miniLogStreams = {};
+// Store log lines for each container (persists across refreshes)
+let miniLogLines = {};
+
 // Dark Mode Toggle
 function toggleDarkMode() {
     const body = document.body;
@@ -108,6 +113,16 @@ async function loadContainers() {
 
         const containersList = document.getElementById('containers-list');
 
+        // Close existing mini-log streams that are no longer needed
+        const runningIds = containers.filter(c => c.status === 'running').map(c => c.id);
+        Object.keys(miniLogStreams).forEach(id => {
+            if (!runningIds.includes(id)) {
+                miniLogStreams[id].close();
+                delete miniLogStreams[id];
+                delete miniLogLines[id]; // Also clear cached logs
+            }
+        });
+
         if (containers.length === 0) {
             containersList.innerHTML = `
                 <div class="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
@@ -132,6 +147,17 @@ async function loadContainers() {
             } else if (container.sync_status === 'idle') {
                 syncBadge = '<span class="px-2 py-1 rounded text-white bg-yellow-500"><i class="fas fa-clock"></i> Idle</span>';
             }
+
+            // Mini terminal (only for running containers)
+            const miniTerminal = container.status === 'running' ? `
+                <div class="mt-4 bg-gray-900 rounded-lg overflow-hidden">
+                    <div class="px-3 py-1 bg-gray-800 flex items-center gap-2">
+                        <i class="fas fa-terminal text-green-400 text-xs"></i>
+                        <span class="text-xs text-gray-400">Live Output</span>
+                    </div>
+                    <div id="mini-log-${container.id}" class="p-2 h-24 overflow-hidden font-mono text-xs text-green-400 whitespace-pre-wrap"></div>
+                </div>
+            ` : '';
 
             return `
                 <div class="bg-white rounded-lg shadow-md p-6">
@@ -174,11 +200,13 @@ async function loadContainers() {
                         </div>
                     </div>
 
-                    <div class="flex gap-2 flex-wrap">
+                    ${miniTerminal}
+
+                    <div class="flex gap-2 flex-wrap mt-4">
                         ${container.status === 'running' ? `
                             <button onclick="viewLogs('${container.id}', '${container.name}')"
                                     class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
-                                <i class="fas fa-file-lines"></i> View Logs
+                                <i class="fas fa-expand"></i> Full Logs
                             </button>
                         ` : `
                             <button disabled
@@ -220,6 +248,11 @@ async function loadContainers() {
                 </div>
             `;
         }).join('');
+
+        // Start mini-log streams for running containers
+        containers.filter(c => c.status === 'running').forEach(container => {
+            startMiniLogStream(container.id);
+        });
 
     } catch (error) {
         console.error('Error loading containers:', error);
@@ -278,6 +311,71 @@ function prettifyLogLine(line) {
     } catch (e) {
         return line;
     }
+}
+
+// Mini-terminal log streaming
+const MINI_LOG_MAX_LINES = 5;
+
+function startMiniLogStream(containerId) {
+    const miniLogEl = document.getElementById(`mini-log-${containerId}`);
+    if (!miniLogEl) return;
+
+    // Initialize log lines array if not exists
+    if (!miniLogLines[containerId]) {
+        miniLogLines[containerId] = [];
+    }
+
+    // If we already have cached logs, display them immediately
+    if (miniLogLines[containerId].length > 0) {
+        updateMiniLogDisplay(containerId);
+    }
+
+    // Don't create duplicate streams
+    if (miniLogStreams[containerId]) {
+        return;
+    }
+
+    // Load initial logs only if we don't have cached lines
+    if (miniLogLines[containerId].length === 0) {
+        fetch(`/api/container/${containerId}/logs`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.logs) {
+                    const lines = data.logs.split('\n').filter(l => l.trim());
+                    miniLogLines[containerId] = lines.slice(-MINI_LOG_MAX_LINES);
+                    updateMiniLogDisplay(containerId);
+                }
+            })
+            .catch(() => {});
+    }
+
+    // Start streaming
+    const stream = new EventSource(`/api/container/${containerId}/logs/stream`);
+    miniLogStreams[containerId] = stream;
+
+    stream.onmessage = function(event) {
+        const line = event.data;
+        if (line.trim()) {
+            miniLogLines[containerId].push(line);
+            if (miniLogLines[containerId].length > MINI_LOG_MAX_LINES) {
+                miniLogLines[containerId].shift();
+            }
+            updateMiniLogDisplay(containerId);
+        }
+    };
+
+    stream.onerror = function() {
+        // Silently handle errors, stream will be cleaned up on next loadContainers
+    };
+}
+
+function updateMiniLogDisplay(containerId) {
+    const miniLogEl = document.getElementById(`mini-log-${containerId}`);
+    if (!miniLogEl || !miniLogLines[containerId]) return;
+
+    miniLogEl.innerHTML = miniLogLines[containerId].map(line => prettifyLogLine(line)).join('\n');
+    // Auto-scroll to bottom
+    miniLogEl.scrollTop = miniLogEl.scrollHeight;
 }
 
 // View logs modal
