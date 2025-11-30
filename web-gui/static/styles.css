@@ -12,63 +12,42 @@
     animation: slide-in 0.3s ease-out;
 }
 
-/* Dark Mode Styles */
+/* ==========================================
+   DARK MODE STYLES
+   ========================================== */
+
+/* Base body */
 body.dark-mode {
     background-color: #1a1a1a !important;
 }
+
+/* Background colors */
 body.dark-mode .bg-white {
     background-color: #2d2d2d !important;
 }
+
 body.dark-mode .bg-gray-100 {
     background-color: #1a1a1a !important;
 }
+
 body.dark-mode .bg-gray-200 {
     background-color: #3d3d3d !important;
 }
-body.dark-mode .text-gray-800 {
-    color: #e0e0e0 !important;
-}
-body.dark-mode .text-gray-600 {
-    color: #b0b0b0 !important;
-}
-body.dark-mode .text-gray-700 {
-    color: #c0c0c0 !important;
-}
-body.dark-mode .text-gray-500 {
-    color: #a0a0a0 !important;
-}
-body.dark-mode .shadow-md {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
-}
-body.dark-mode #theme-toggle {
-    background-color: #3d3d3d !important;
-}
-body.dark-mode #theme-toggle:hover {
-    background-color: #4d4d4d !important;
-}
-body.dark-mode strong {
-    color: #ffffff !important;
-}
-body.dark-mode .text-sm {
-    color: #e0e0e0 !important;
-}
-body.dark-mode .text-sm div {
-    color: #b0b0b0 !important;
+
+body.dark-mode .bg-gray-50 {
+    background-color: #374151 !important;
 }
 
-/* Modals dark mode - keep backgrounds dark and text light */
-body.dark-mode #rebuild-modal .bg-white,
-body.dark-mode #log-modal .bg-white,
-body.dark-mode #vnc-auth-modal .bg-white,
-body.dark-mode #config-modal .bg-white,
-body.dark-mode #create-profile-modal .bg-white,
-body.dark-mode #confirm-modal .bg-white,
-body.dark-mode #folder-picker-modal .bg-white {
-    background-color: #2d2d2d !important;
+body.dark-mode .bg-gray-300 {
+    background-color: #4b5563 !important;
 }
 
-/* Special backgrounds in modals */
+/* Colored backgrounds */
 body.dark-mode .bg-blue-50 {
+    background-color: #1e3a5f !important;
+}
+
+body.dark-mode .bg-blue-100 {
     background-color: #1e3a5f !important;
 }
 
@@ -80,48 +59,283 @@ body.dark-mode .bg-green-50 {
     background-color: #1e4d2d !important;
 }
 
+body.dark-mode .bg-green-100 {
+    background-color: #052e16 !important;
+}
+
+body.dark-mode .bg-yellow-50 {
+    background-color: #422006 !important;
+}
+
 body.dark-mode .bg-yellow-900 {
     background-color: #4d3d1e !important;
 }
 
-/* Text colors in colored backgrounds */
+body.dark-mode .bg-red-50 {
+    background-color: #450a0a !important;
+}
+
+body.dark-mode .bg-red-100 {
+    background-color: #450a0a !important;
+}
+
+/* Text colors - Gray scale */
+body.dark-mode .text-gray-800 {
+    color: #e5e7eb !important;
+}
+
+body.dark-mode .text-gray-700 {
+    color: #d1d5db !important;
+}
+
+body.dark-mode .text-gray-600 {
+    color: #d1d5db !important;
+}
+
+body.dark-mode .text-gray-500 {
+    color: #9ca3af !important;
+}
+
+body.dark-mode .text-gray-400 {
+    color: #9ca3af !important;
+}
+
+/* Text colors - Blue */
+body.dark-mode .text-blue-900,
 body.dark-mode .text-blue-800,
-body.dark-mode .text-blue-700,
-body.dark-mode .text-blue-900 {
+body.dark-mode .text-blue-700 {
     color: #93c5fd !important;
 }
 
-body.dark-mode .text-purple-900,
-body.dark-mode .text-purple-800 {
-    color: #d8b4fe !important;
+body.dark-mode .text-blue-600 {
+    color: #60a5fa !important;
 }
 
+/* Text colors - Green */
 body.dark-mode .text-green-900,
-body.dark-mode .text-green-800 {
+body.dark-mode .text-green-800,
+body.dark-mode .text-green-700 {
     color: #86efac !important;
+}
+
+body.dark-mode .text-green-600 {
+    color: #4ade80 !important;
+}
+
+/* Text colors - Red */
+body.dark-mode .text-red-900,
+body.dark-mode .text-red-800,
+body.dark-mode .text-red-700 {
+    color: #fca5a5 !important;
+}
+
+body.dark-mode .text-red-600,
+body.dark-mode .text-red-500 {
+    color: #f87171 !important;
+}
+
+/* Text colors - Yellow */
+body.dark-mode .text-yellow-900 {
+    color: #fef08a !important;
+}
+
+body.dark-mode .text-yellow-800,
+body.dark-mode .text-yellow-700 {
+    color: #fde047 !important;
+}
+
+body.dark-mode .text-yellow-600,
+body.dark-mode .text-yellow-500 {
+    color: #facc15 !important;
+}
+
+body.dark-mode .text-yellow-400 {
+    color: #facc15 !important;
 }
 
 body.dark-mode .text-yellow-200 {
     color: #fef08a !important;
 }
 
-/* Borders in dark mode */
-body.dark-mode .border-b,
-body.dark-mode .border-t {
-    border-color: #4d4d4d !important;
+/* Text colors - Purple */
+body.dark-mode .text-purple-900,
+body.dark-mode .text-purple-800 {
+    color: #d8b4fe !important;
 }
 
-/* Buttons in modals - ensure readable colors */
-body.dark-mode .bg-gray-300 {
-    background-color: #4b5563 !important;
+/* Border colors */
+body.dark-mode .border-t,
+body.dark-mode .border-b {
+    border-color: #374151 !important;
 }
 
-body.dark-mode .text-gray-700 {
+body.dark-mode .border-gray-300 {
+    border-color: #4b5563 !important;
+}
+
+body.dark-mode .border-yellow-400 {
+    border-color: #ca8a04 !important;
+}
+
+body.dark-mode .border-blue-400 {
+    border-color: #3b82f6 !important;
+}
+
+body.dark-mode .border-purple-400 {
+    border-color: #a855f7 !important;
+}
+
+body.dark-mode .border-green-400 {
+    border-color: #4ade80 !important;
+}
+
+body.dark-mode .border-red-400 {
+    border-color: #f87171 !important;
+}
+
+/* Shadow */
+body.dark-mode .shadow-md {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Theme toggle button */
+body.dark-mode #theme-toggle {
+    background-color: #3d3d3d !important;
+}
+
+body.dark-mode #theme-toggle:hover {
+    background-color: #4d4d4d !important;
+}
+
+/* Strong text */
+body.dark-mode strong {
+    color: #ffffff !important;
+}
+
+/* Small text */
+body.dark-mode .text-sm {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .text-sm div {
+    color: #b0b0b0 !important;
+}
+
+body.dark-mode .text-xs {
+    color: #9ca3af !important;
+}
+
+/* Labels */
+body.dark-mode label {
+    color: #d1d5db !important;
+}
+
+/* Modals - ensure dark backgrounds */
+body.dark-mode #rebuild-modal .bg-white,
+body.dark-mode #log-modal .bg-white,
+body.dark-mode #vnc-auth-modal .bg-white,
+body.dark-mode #config-modal .bg-white,
+body.dark-mode #create-profile-modal .bg-white,
+body.dark-mode #confirm-modal .bg-white,
+body.dark-mode #folder-picker-modal .bg-white {
+    background-color: #2d2d2d !important;
+}
+
+/* Input and Select fields */
+body.dark-mode input[type="text"],
+body.dark-mode input[type="number"],
+body.dark-mode select,
+body.dark-mode textarea {
+    background-color: #374151 !important;
+    border-color: #4b5563 !important;
     color: #e5e7eb !important;
 }
 
-/* Hover states for gray buttons */
+body.dark-mode input[type="text"]::placeholder,
+body.dark-mode input[type="number"]::placeholder,
+body.dark-mode textarea::placeholder {
+    color: #9ca3af !important;
+}
+
+body.dark-mode input[type="text"]:focus,
+body.dark-mode input[type="number"]:focus,
+body.dark-mode select:focus,
+body.dark-mode textarea:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Checkbox styling */
+body.dark-mode input[type="checkbox"] {
+    background-color: #374151 !important;
+    border-color: #4b5563 !important;
+}
+
+/* Select dropdown options */
+body.dark-mode select option {
+    background-color: #374151 !important;
+    color: #e5e7eb !important;
+}
+
+/* Hover states */
 body.dark-mode .bg-gray-300:hover,
 body.dark-mode .hover\:bg-gray-400:hover {
     background-color: #6b7280 !important;
+}
+
+body.dark-mode .hover\:bg-gray-100:hover {
+    background-color: #4b5563 !important;
+}
+
+body.dark-mode .hover\:bg-blue-50:hover {
+    background-color: #1e3a5f !important;
+}
+
+/* Modal close buttons hover */
+body.dark-mode .text-gray-500.hover\:text-gray-700:hover {
+    color: #e5e7eb !important;
+}
+
+/* Available profiles - white cards inside yellow warning */
+body.dark-mode .bg-yellow-50 .bg-white {
+    background-color: #1f2937 !important;
+}
+
+/* Fix specific text colors in colored backgrounds */
+body.dark-mode .bg-yellow-50 .text-yellow-800,
+body.dark-mode .bg-yellow-50 h3 {
+    color: #fde047 !important;
+}
+
+body.dark-mode .bg-blue-50 .text-blue-800,
+body.dark-mode .bg-blue-100 .text-blue-800 {
+    color: #93c5fd !important;
+}
+
+body.dark-mode .bg-red-100 .text-red-800 {
+    color: #fca5a5 !important;
+}
+
+body.dark-mode .bg-green-100 .text-green-800 {
+    color: #86efac !important;
+}
+
+/* Confirm modal text */
+body.dark-mode #confirm-message {
+    color: #d1d5db !important;
+}
+
+/* Folder picker specific */
+body.dark-mode .fa-folder {
+    color: #eab308 !important;
+}
+
+body.dark-mode .fa-level-up-alt {
+    color: #9ca3af !important;
+}
+
+/* Pre/code blocks that are not log viewers */
+body.dark-mode pre:not(#log-content):not(#rebuild-log) {
+    background-color: #1f2937 !important;
+    color: #e5e7eb !important;
 }

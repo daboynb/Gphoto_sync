@@ -490,21 +490,21 @@ async function loadAvailableProfiles() {
         }));
 
         profilesDiv.innerHTML = `
-            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+            <div class="bg-white border-l-4 border-yellow-400 p-4 rounded shadow-md">
                 <div class="flex items-start">
                     <div class="flex-shrink-0">
-                        <i class="fas fa-exclamation-triangle text-yellow-400 text-xl"></i>
+                        <i class="fas fa-pause-circle text-yellow-500 text-xl"></i>
                     </div>
                     <div class="ml-3 flex-1">
-                        <h3 class="text-sm font-medium text-yellow-800 mb-2">
+                        <h3 class="text-sm font-medium text-gray-800 mb-2">
                             Available Profiles (Not Running)
                         </h3>
                         <div class="space-y-2">
                             ${profilesWithAuth.map(profile => `
-                                <div class="flex items-center justify-between bg-white p-3 rounded">
+                                <div class="flex items-center justify-between bg-gray-100 p-3 rounded">
                                     <div>
-                                        <span class="font-semibold">${profile.display_name || profile.name}</span>
-                                        ${profile.display_name && profile.display_name !== profile.name ?
+                                        <span class="font-semibold text-gray-800">${profile.display_name || profile.name}</span>
+                                        ${profile.display_name && profile.display_name.toLowerCase() !== profile.name.toLowerCase() ?
                                             `<span class="ml-2 text-xs text-gray-500">(${profile.name})</span>` : ''
                                         }
                                         ${!profile.has_compose && profile.authenticated ?
@@ -1124,7 +1124,7 @@ async function loadFolderContents(path) {
                     dirDiv.onclick = () => loadFolderContents(dir.path);
                     dirDiv.innerHTML = `
                         <i class="fas fa-folder text-yellow-500"></i>
-                        <span class="flex-1">${dir.name}</span>
+                        <span class="flex-1 text-gray-800">${dir.name}</span>
                         <i class="fas fa-chevron-right text-gray-400"></i>
                     `;
                 }
