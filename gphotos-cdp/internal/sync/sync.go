@@ -173,7 +173,8 @@ func Resync(s *types.Session, ctx context.Context, workersFlag int64, albumIdFla
 		}
 
 		// New new nodes found, does it look like we are done?
-		if retries > 5000 || (retries > 100 && estimatedRemaining < 50) {
+		// Note: estimatedRemaining defaults to 50 for small albums, so use <= 50
+		if retries > 5000 || (retries > 100 && estimatedRemaining <= 50) {
 			break
 		}
 

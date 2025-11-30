@@ -32,17 +32,64 @@ elif [ -f "$PREFS_FILE" ]; then
 fi
 
 if [ -n "$ALBUMS" ]; then
-  for ALBUM in $(echo $ALBUMS | tr ',' ' '); do
-    ALBUM_DL_DIR="$DOWNLOAD_DIR/$(basename "$ALBUM")"
-    if [ "$ALBUM" = "ALL" ]; then
+  # Parse albums - supports two formats:
+  # New format: name|id,name|id (name is folder name, id is album ID)
+  # Legacy format: id1,id2,id3 (id is used as both name and album ID)
+
+  # Save original IFS and set to comma for splitting
+  OLD_IFS="$IFS"
+  IFS=','
+
+  for ENTRY in $ALBUMS; do
+    # Restore IFS for internal operations
+    IFS="$OLD_IFS"
+
+    # Trim whitespace
+    ENTRY=$(echo "$ENTRY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    if [ -z "$ENTRY" ]; then
+      IFS=','
+      continue
+    fi
+
+    # Check if entry contains pipe separator (new format)
+    case "$ENTRY" in
+      *"|"*)
+        # New format: name|id - use cut for POSIX compatibility
+        ALBUM_NAME=$(echo "$ENTRY" | cut -d'|' -f1)
+        ALBUM_ID=$(echo "$ENTRY" | cut -d'|' -f2)
+        ;;
+      *)
+        # Legacy format: just id (use id as name)
+        ALBUM_NAME="$ENTRY"
+        ALBUM_ID="$ENTRY"
+        ;;
+    esac
+
+    ALBUM_DL_DIR="$DOWNLOAD_DIR/$ALBUM_NAME"
+
+    if [ "$ALBUM_ID" = "ALL" ]; then
       eval gphotos-cdp -dldir "$ALBUM_DL_DIR" $GPHOTOS_CDP_ARGS
     else
-      eval gphotos-cdp -dldir "$ALBUM_DL_DIR" $GPHOTOS_CDP_ARGS -album $ALBUM
+      info "Syncing album '$ALBUM_NAME' (ID: $ALBUM_ID) to $ALBUM_DL_DIR"
+      eval gphotos-cdp -dldir "$ALBUM_DL_DIR" $GPHOTOS_CDP_ARGS -album "$ALBUM_ID"
     fi
+
+    # Reset IFS for next iteration
+    IFS=','
   done
+
+  # Restore original IFS
+  IFS="$OLD_IFS"
 else
   eval gphotos-cdp -dldir "$DOWNLOAD_DIR" $GPHOTOS_CDP_ARGS
 fi
+
+# Cleanup empty tmp directories created by Chrome during download
+info "Cleaning up temporary directories..."
+find "$DOWNLOAD_DIR" -type d -name "tmp" -empty -delete 2>/dev/null || true
+# Also remove non-empty tmp dirs (they should only contain partial downloads)
+find "$DOWNLOAD_DIR" -type d -name "tmp" -exec rm -rf {} + 2>/dev/null || true
 
 info "completed sync.sh, pid: $$"
 

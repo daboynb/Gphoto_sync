@@ -44,6 +44,34 @@ chmod -R 755 "$PROFILE_DIR/Default" 2>/dev/null || true
 info "download dir permissions: $(ls -ld $DOWNLOAD_DIR)"
 info "profile dir permissions: $(ls -ld $PROFILE_DIR)"
 
+# Detect if ALBUMS configuration changed - if so, clean .lastdone files
+ALBUMS_CONFIG_FILE="$PROFILE_DIR/.albums_config"
+CURRENT_ALBUMS="${ALBUMS:-ALL}"
+
+if [ -f "$ALBUMS_CONFIG_FILE" ]; then
+    PREVIOUS_ALBUMS=$(cat "$ALBUMS_CONFIG_FILE" 2>/dev/null || echo "")
+    if [ "$PREVIOUS_ALBUMS" != "$CURRENT_ALBUMS" ]; then
+        info "Albums configuration changed from '$PREVIOUS_ALBUMS' to '$CURRENT_ALBUMS'"
+        info "Cleaning sync state files to force full re-sync..."
+
+        # Clean .lastdone files (for ALL sync and subdirectories)
+        rm -f "$DOWNLOAD_DIR/.lastdone"* 2>/dev/null || true
+        find "$DOWNLOAD_DIR" -name ".lastdone*" -type f -delete 2>/dev/null || true
+
+        # Clean .downloaded_ids.txt files (tracks which photos were downloaded)
+        rm -f "$DOWNLOAD_DIR/.downloaded_ids.txt" 2>/dev/null || true
+        find "$DOWNLOAD_DIR" -name ".downloaded_ids.txt" -type f -delete 2>/dev/null || true
+
+        info "Cleanup completed - full sync will run"
+    fi
+else
+    info "First run or no previous albums config found"
+fi
+
+# Save current albums configuration
+echo "$CURRENT_ALBUMS" > "$ALBUMS_CONFIG_FILE"
+chown abc:abc "$ALBUMS_CONFIG_FILE" 2>/dev/null || true
+
 # Verify that abc user can actually write to profile directory
 if ! sudo -u abc test -w "$PROFILE_DIR"; then
     warning "Profile directory $PROFILE_DIR is not writable by user abc (UID ${PUID})"

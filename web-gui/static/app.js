@@ -841,6 +841,9 @@ function openConfigModal(profileName, displayName) {
     // Hide advanced options by default
     document.getElementById('advanced-options').classList.add('hidden');
     document.getElementById('advanced-toggle-icon').classList.remove('rotate-180');
+
+    // Initialize albums list (empty for new profile)
+    initializeAlbumsList('');
 }
 
 async function editProfileConfig(profileName, displayName) {
@@ -868,7 +871,6 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-run-on-startup').checked = config.run_on_startup;
         document.getElementById('config-loglevel').value = config.loglevel || 'info';
         document.getElementById('config-workers').value = config.worker_count || 6;
-        document.getElementById('config-albums').value = config.albums || '';
         document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
         document.getElementById('config-photo-dir').value = config.photo_dir || '';
 
@@ -884,6 +886,9 @@ async function editProfileConfig(profileName, displayName) {
         // Hide advanced options by default
         document.getElementById('advanced-options').classList.add('hidden');
         document.getElementById('advanced-toggle-icon').classList.remove('rotate-180');
+
+        // Initialize albums list with existing data
+        initializeAlbumsList(config.albums || '');
 
         document.getElementById('config-modal').classList.remove('hidden');
     } catch (error) {
@@ -914,6 +919,13 @@ function toggleCronSchedule() {
 async function saveConfiguration() {
     const enableCron = document.getElementById('config-enable-cron').checked;
 
+    // Get sync mode and albums
+    const syncMode = document.querySelector('input[name="sync-mode"]:checked').value;
+    let albums = '';
+    if (syncMode === 'albums') {
+        albums = document.getElementById('config-albums').value.trim();
+    }
+
     // Basic configuration
     const config = {
         enable_cron: enableCron,
@@ -921,7 +933,7 @@ async function saveConfiguration() {
         run_on_startup: enableCron ? document.getElementById('config-run-on-startup').checked : false,
         loglevel: document.getElementById('config-loglevel').value,
         worker_count: parseInt(document.getElementById('config-workers').value),
-        albums: document.getElementById('config-albums').value.trim(),
+        albums: albums,
         timezone: document.getElementById('config-timezone').value.trim(),
         photo_dir: document.getElementById('config-photo-dir').value.trim(),
 
@@ -1468,3 +1480,248 @@ setInterval(() => {
 loadContainers();
 loadStats();
 loadAvailableProfiles();
+
+// ==========================================
+// Album Management Functions
+// ==========================================
+
+// Store albums as array of {name, id} objects
+let configAlbumsList = [];
+
+// Toggle sync mode (all library vs specific albums)
+function toggleSyncMode() {
+    const syncMode = document.querySelector('input[name="sync-mode"]:checked').value;
+    const albumsContainer = document.getElementById('albums-list-container');
+
+    if (syncMode === 'albums') {
+        albumsContainer.classList.remove('hidden');
+    } else {
+        albumsContainer.classList.add('hidden');
+    }
+}
+
+// Open add album modal
+function openAddAlbumModal() {
+    document.getElementById('add-album-modal').classList.remove('hidden');
+    document.getElementById('album-link-input').value = '';
+    document.getElementById('album-id-display').value = '';
+    document.getElementById('album-name-input').value = '';
+    document.getElementById('album-id-container').classList.add('hidden');
+    document.getElementById('album-name-container').classList.add('hidden');
+    document.getElementById('add-album-btn').disabled = true;
+    document.getElementById('album-link-input').focus();
+}
+
+// Close add album modal
+function closeAddAlbumModal() {
+    document.getElementById('add-album-modal').classList.add('hidden');
+}
+
+// Extract album ID from Google Photos URL
+function extractAlbumIdFromUrl(url) {
+    // Google Photos album URL patterns:
+    // https://photos.google.com/album/ALBUM_ID
+    // https://photos.google.com/share/ALBUM_ID
+    // https://photos.google.com/u/0/album/ALBUM_ID
+
+    const patterns = [
+        /photos\.google\.com\/(?:u\/\d+\/)?album\/([A-Za-z0-9_-]+)/,
+        /photos\.google\.com\/(?:u\/\d+\/)?share\/([A-Za-z0-9_-]+)/
+    ];
+
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+
+    return null;
+}
+
+// Handle album link input change
+function onAlbumLinkInput() {
+    const linkInput = document.getElementById('album-link-input');
+    const idDisplay = document.getElementById('album-id-display');
+    const idContainer = document.getElementById('album-id-container');
+    const nameContainer = document.getElementById('album-name-container');
+    const addBtn = document.getElementById('add-album-btn');
+
+    const url = linkInput.value.trim();
+    const albumId = extractAlbumIdFromUrl(url);
+
+    if (albumId) {
+        idDisplay.value = albumId;
+        idContainer.classList.remove('hidden');
+        nameContainer.classList.remove('hidden');
+
+        // Enable add button only if name is also filled
+        updateAddAlbumButtonState();
+    } else {
+        idContainer.classList.add('hidden');
+        nameContainer.classList.add('hidden');
+        addBtn.disabled = true;
+    }
+}
+
+// Update add album button state
+function updateAddAlbumButtonState() {
+    const albumId = document.getElementById('album-id-display').value.trim();
+    const albumName = document.getElementById('album-name-input').value.trim();
+    const addBtn = document.getElementById('add-album-btn');
+
+    addBtn.disabled = !(albumId && albumName);
+}
+
+// Add event listener for album name input
+document.addEventListener('DOMContentLoaded', function() {
+    const nameInput = document.getElementById('album-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('input', updateAddAlbumButtonState);
+        nameInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter' && !document.getElementById('add-album-btn').disabled) {
+                addAlbumToList();
+            }
+        });
+    }
+});
+
+// Add album to the list
+function addAlbumToList() {
+    const albumId = document.getElementById('album-id-display').value.trim();
+    const albumName = document.getElementById('album-name-input').value.trim();
+
+    if (!albumId || !albumName) {
+        showToast('Please enter both album link and name', 'warning');
+        return;
+    }
+
+    // Check for duplicate ID
+    if (configAlbumsList.some(a => a.id === albumId)) {
+        showToast('This album is already in the list', 'warning');
+        return;
+    }
+
+    // Sanitize album name for filesystem
+    const sanitizedName = sanitizeAlbumName(albumName);
+
+    // Add to list
+    configAlbumsList.push({
+        name: sanitizedName,
+        id: albumId
+    });
+
+    // Update UI
+    renderAlbumsList();
+    updateConfigAlbumsInput();
+    closeAddAlbumModal();
+    showToast(`Album "${sanitizedName}" added`, 'success');
+}
+
+// Sanitize album name for filesystem use
+function sanitizeAlbumName(name) {
+    // Replace invalid characters with underscore
+    // Keep letters, numbers, spaces, hyphens, underscores
+    return name
+        .replace(/[<>:"/\\|?*]/g, '_')  // Remove invalid chars
+        .replace(/\s+/g, ' ')           // Normalize spaces
+        .trim()
+        .substring(0, 100);             // Limit length
+}
+
+// Remove album from list
+function removeAlbumFromList(index) {
+    const album = configAlbumsList[index];
+    configAlbumsList.splice(index, 1);
+    renderAlbumsList();
+    updateConfigAlbumsInput();
+    showToast(`Album "${album.name}" removed`, 'info');
+}
+
+// Render albums list in the config modal
+function renderAlbumsList() {
+    const listContainer = document.getElementById('albums-list');
+
+    if (configAlbumsList.length === 0) {
+        listContainer.innerHTML = `
+            <div class="text-center text-gray-500 py-4">
+                <i class="fas fa-folder-open text-2xl mb-2"></i>
+                <p class="text-sm">No albums added yet</p>
+            </div>
+        `;
+        return;
+    }
+
+    listContainer.innerHTML = configAlbumsList.map((album, index) => `
+        <div class="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
+            <i class="fas fa-images text-blue-500"></i>
+            <div class="flex-1 min-w-0">
+                <div class="font-medium text-gray-800 truncate">${album.name}</div>
+                <div class="text-xs text-gray-500 font-mono truncate">${album.id}</div>
+            </div>
+            <button onclick="removeAlbumFromList(${index})"
+                    class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Update hidden input with albums data
+// Format: name|id,name|id (pipe separates name from id, comma separates albums)
+function updateConfigAlbumsInput() {
+    const input = document.getElementById('config-albums');
+    if (configAlbumsList.length === 0) {
+        input.value = '';
+    } else {
+        input.value = configAlbumsList.map(a => `${a.name}|${a.id}`).join(',');
+    }
+}
+
+// Parse albums string back to array
+// Format: name|id,name|id OR legacy format: id1,id2,id3
+function parseAlbumsString(albumsStr) {
+    if (!albumsStr || albumsStr.trim() === '' || albumsStr.toUpperCase() === 'ALL') {
+        return [];
+    }
+
+    const albums = [];
+    const parts = albumsStr.split(',');
+
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        if (trimmed.includes('|')) {
+            // New format: name|id
+            const [name, id] = trimmed.split('|');
+            if (name && id) {
+                albums.push({ name: name.trim(), id: id.trim() });
+            }
+        } else {
+            // Legacy format: just id - use id as name
+            albums.push({ name: trimmed, id: trimmed });
+        }
+    }
+
+    return albums;
+}
+
+// Initialize albums list when opening config modal
+function initializeAlbumsList(albumsStr) {
+    configAlbumsList = parseAlbumsString(albumsStr);
+    renderAlbumsList();
+    updateConfigAlbumsInput();
+
+    // Set sync mode based on whether there are albums
+    const syncModeAll = document.querySelector('input[name="sync-mode"][value="all"]');
+    const syncModeAlbums = document.querySelector('input[name="sync-mode"][value="albums"]');
+
+    if (configAlbumsList.length > 0) {
+        syncModeAlbums.checked = true;
+        document.getElementById('albums-list-container').classList.remove('hidden');
+    } else {
+        syncModeAll.checked = true;
+        document.getElementById('albums-list-container').classList.add('hidden');
+    }
+}
