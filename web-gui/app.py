@@ -12,6 +12,7 @@ from routes.containers import containers_bp
 from routes.profiles import profiles_bp
 from routes.auth import auth_bp
 from routes.rebuild import rebuild_bp
+from routes.healthcheck import healthcheck_bp
 
 app = Flask(__name__)
 
@@ -20,6 +21,7 @@ app.register_blueprint(containers_bp)
 app.register_blueprint(profiles_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(rebuild_bp)
+app.register_blueprint(healthcheck_bp)
 
 
 def check_auth():

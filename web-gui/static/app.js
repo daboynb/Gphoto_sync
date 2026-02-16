@@ -840,6 +840,7 @@ async function openConfigModal(profileName, displayName) {
     document.getElementById('config-run-on-startup').checked = defaults.run_on_startup !== undefined ? defaults.run_on_startup : true;
     document.getElementById('config-loglevel').value = defaults.loglevel || 'info';
     document.getElementById('config-workers').value = defaults.worker_count || 6;
+    document.getElementById('config-download-method').value = defaults.download_method || 'compressed';
     document.getElementById('config-albums').value = '';
     document.getElementById('config-timezone').value = defaults.timezone || 'Europe/Rome';
     document.getElementById('config-photo-dir').value = '';
@@ -892,6 +893,7 @@ async function editProfileConfig(profileName, displayName) {
         document.getElementById('config-run-on-startup').checked = config.run_on_startup;
         document.getElementById('config-loglevel').value = config.loglevel || defaults.loglevel || 'info';
         document.getElementById('config-workers').value = config.worker_count || defaults.worker_count || 6;
+        document.getElementById('config-download-method').value = config.download_method || defaults.download_method || 'compressed';
         document.getElementById('config-timezone').value = config.timezone || defaults.timezone || 'Europe/Rome';
         document.getElementById('config-photo-dir').value = config.photo_dir || '';
 
@@ -955,6 +957,7 @@ async function saveConfiguration() {
         run_on_startup: enableCron ? document.getElementById('config-run-on-startup').checked : false,
         loglevel: document.getElementById('config-loglevel').value,
         worker_count: parseInt(document.getElementById('config-workers').value),
+        download_method: document.getElementById('config-download-method').value,
         albums: albums,
         timezone: document.getElementById('config-timezone').value.trim(),
         photo_dir: document.getElementById('config-photo-dir').value.trim(),
@@ -1515,6 +1518,281 @@ function reloadContainersAfterRebuild() {
         loadStats();
         loadAvailableProfiles();
     }, 2000);
+}
+
+// ==========================================
+// Health Check Functions
+// ==========================================
+
+let healthCheckEventSource = null;
+
+async function openHealthCheckModal() {
+    document.getElementById('healthcheck-modal').classList.remove('hidden');
+
+    // Reset UI
+    document.getElementById('healthcheck-tests').innerHTML = '';
+    document.getElementById('healthcheck-log').textContent = '';
+    document.getElementById('healthcheck-log-container').classList.add('hidden');
+    document.getElementById('healthcheck-status').classList.add('hidden');
+    document.getElementById('healthcheck-summary').classList.add('hidden');
+    document.getElementById('healthcheck-setup').classList.remove('hidden');
+    document.getElementById('healthcheck-run-btn').disabled = false;
+    document.getElementById('healthcheck-run-btn').innerHTML = '<i class="fas fa-play"></i> Run Health Check';
+
+    // Load profiles
+    try {
+        const response = await fetch('/api/healthcheck/profiles');
+        const profiles = await response.json();
+        const select = document.getElementById('healthcheck-profile');
+
+        if (profiles.length === 0) {
+            select.innerHTML = '<option value="">No authenticated profiles found</option>';
+            document.getElementById('healthcheck-run-btn').disabled = true;
+        } else {
+            select.innerHTML = profiles.map(p =>
+                `<option value="${p.name}">${p.display_name}</option>`
+            ).join('');
+        }
+    } catch (error) {
+        console.error('Error loading healthcheck profiles:', error);
+        showToast('Error loading profiles', 'error');
+    }
+}
+
+function closeHealthCheckModal() {
+    document.getElementById('healthcheck-modal').classList.add('hidden');
+    if (healthCheckEventSource) {
+        healthCheckEventSource.close();
+        healthCheckEventSource = null;
+    }
+}
+
+function runHealthCheck() {
+    const profileName = document.getElementById('healthcheck-profile').value;
+    if (!profileName) {
+        showToast('Please select a profile', 'warning');
+        return;
+    }
+
+    // Update UI
+    document.getElementById('healthcheck-run-btn').disabled = true;
+    document.getElementById('healthcheck-run-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+    document.getElementById('healthcheck-tests').innerHTML = '';
+    document.getElementById('healthcheck-log').textContent = '';
+    document.getElementById('healthcheck-log-container').classList.remove('hidden');
+    document.getElementById('healthcheck-status').classList.remove('hidden');
+    document.getElementById('healthcheck-summary').classList.add('hidden');
+    updateHealthCheckStatus('Starting health check...', '', 'running');
+
+    // Start SSE
+    healthCheckEventSource = new EventSource(`/api/healthcheck/${profileName}/stream`);
+
+    // POST triggers the stream; EventSource connects via GET implicit in the browser
+    // Actually, EventSource only supports GET. We need to use fetch for POST + SSE.
+    healthCheckEventSource.close();
+    healthCheckEventSource = null;
+
+    // Use fetch with ReadableStream for POST SSE
+    startHealthCheckStream(profileName);
+}
+
+async function startHealthCheckStream(profileName) {
+    try {
+        const response = await fetch(`/api/healthcheck/${profileName}/stream`, {
+            method: 'POST',
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete SSE messages
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Keep incomplete line in buffer
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.substring(6));
+                        handleHealthCheckEvent(data);
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+            }
+        }
+
+        // Process remaining buffer
+        if (buffer.startsWith('data: ')) {
+            try {
+                const data = JSON.parse(buffer.substring(6));
+                handleHealthCheckEvent(data);
+            } catch (e) {}
+        }
+    } catch (error) {
+        console.error('Health check stream error:', error);
+        updateHealthCheckStatus('Connection Error', 'Failed to connect to health check stream', 'error');
+        document.getElementById('healthcheck-run-btn').disabled = false;
+        document.getElementById('healthcheck-run-btn').innerHTML = '<i class="fas fa-play"></i> Run Health Check';
+    }
+}
+
+function handleHealthCheckEvent(data) {
+    switch (data.type) {
+        case 'status':
+            updateHealthCheckStatus(data.message, '', 'running');
+            break;
+
+        case 'test_result':
+            addHealthCheckTestResult(data.data);
+            break;
+
+        case 'summary':
+            showHealthCheckSummary(data.data);
+            break;
+
+        case 'log':
+            appendHealthCheckLog(data.message);
+            break;
+
+        case 'complete':
+            updateHealthCheckStatus(data.message, '', data.message.includes('successfully') ? 'success' : 'warning');
+            document.getElementById('healthcheck-run-btn').disabled = false;
+            document.getElementById('healthcheck-run-btn').innerHTML = '<i class="fas fa-play"></i> Run Again';
+            break;
+
+        case 'error':
+            updateHealthCheckStatus('Error', data.message, 'error');
+            document.getElementById('healthcheck-run-btn').disabled = false;
+            document.getElementById('healthcheck-run-btn').innerHTML = '<i class="fas fa-play"></i> Run Again';
+            break;
+    }
+}
+
+function updateHealthCheckStatus(title, detail, status) {
+    const statusDiv = document.getElementById('healthcheck-status');
+    const titleEl = document.getElementById('healthcheck-status-text');
+    const detailEl = document.getElementById('healthcheck-status-detail');
+    const iconEl = document.getElementById('healthcheck-status-icon');
+
+    statusDiv.classList.remove('hidden');
+    titleEl.textContent = title;
+    detailEl.textContent = detail;
+
+    statusDiv.className = 'p-4 border-b';
+    switch (status) {
+        case 'running':
+            statusDiv.classList.add('bg-blue-50');
+            titleEl.className = 'font-semibold text-blue-900';
+            detailEl.className = 'text-sm text-blue-700';
+            iconEl.className = 'fas fa-spinner fa-spin text-blue-600 text-xl';
+            break;
+        case 'success':
+            statusDiv.classList.add('bg-green-50');
+            titleEl.className = 'font-semibold text-green-900';
+            detailEl.className = 'text-sm text-green-700';
+            iconEl.className = 'fas fa-check-circle text-green-600 text-xl';
+            break;
+        case 'error':
+            statusDiv.classList.add('bg-red-50');
+            titleEl.className = 'font-semibold text-red-900';
+            detailEl.className = 'text-sm text-red-700';
+            iconEl.className = 'fas fa-exclamation-circle text-red-600 text-xl';
+            break;
+        case 'warning':
+            statusDiv.classList.add('bg-yellow-50');
+            titleEl.className = 'font-semibold text-yellow-900';
+            detailEl.className = 'text-sm text-yellow-700';
+            iconEl.className = 'fas fa-exclamation-triangle text-yellow-600 text-xl';
+            break;
+    }
+}
+
+function addHealthCheckTestResult(test) {
+    const container = document.getElementById('healthcheck-tests');
+
+    const statusIcons = {
+        'pass': '<i class="fas fa-check-circle text-green-500"></i>',
+        'fail': '<i class="fas fa-times-circle text-red-500"></i>',
+        'skip': '<i class="fas fa-minus-circle text-gray-400"></i>',
+    };
+
+    const statusColors = {
+        'pass': 'bg-green-50 border-green-200',
+        'fail': 'bg-red-50 border-red-200',
+        'skip': 'bg-gray-50 border-gray-200',
+    };
+
+    const div = document.createElement('div');
+    div.className = `flex items-start gap-3 p-3 rounded-lg border ${statusColors[test.status] || 'bg-gray-50 border-gray-200'}`;
+    div.innerHTML = `
+        <div class="mt-0.5">${statusIcons[test.status] || ''}</div>
+        <div class="flex-1 min-w-0">
+            <div class="font-medium text-gray-800 text-sm">${test.name}</div>
+            <div class="text-xs text-gray-600 mt-1 break-words">${test.message}</div>
+        </div>
+        <span class="text-xs font-medium px-2 py-1 rounded ${
+            test.status === 'pass' ? 'bg-green-100 text-green-700' :
+            test.status === 'fail' ? 'bg-red-100 text-red-700' :
+            'bg-gray-100 text-gray-600'
+        }">${test.status.toUpperCase()}</span>
+    `;
+
+    container.appendChild(div);
+
+    // Update running count
+    const passCount = container.querySelectorAll('.text-green-500').length;
+    const failCount = container.querySelectorAll('.text-red-500').length;
+    const total = container.children.length;
+    updateHealthCheckStatus(`Running tests... (${total})`, `${passCount} passed, ${failCount} failed`, 'running');
+}
+
+function showHealthCheckSummary(summary) {
+    const summaryDiv = document.getElementById('healthcheck-summary');
+    summaryDiv.classList.remove('hidden');
+
+    document.getElementById('healthcheck-passed').textContent = summary.passed;
+    document.getElementById('healthcheck-failed').textContent = summary.failed;
+    document.getElementById('healthcheck-total').textContent = summary.total;
+
+    const badge = document.getElementById('healthcheck-summary-badge');
+    if (summary.failed === 0) {
+        badge.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium"><i class="fas fa-check"></i> All Passed</span>';
+    } else {
+        badge.innerHTML = `<span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium"><i class="fas fa-exclamation-triangle"></i> ${summary.failed} Failed</span>`;
+    }
+}
+
+function appendHealthCheckLog(message) {
+    const logEl = document.getElementById('healthcheck-log');
+    logEl.textContent += message + '\n';
+
+    // Auto-scroll
+    const logContainer = document.getElementById('healthcheck-log-container');
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function toggleHealthCheckLog() {
+    const logContainer = document.getElementById('healthcheck-log-container');
+    const icon = document.getElementById('healthcheck-log-toggle-icon');
+
+    if (logContainer.classList.contains('max-h-48')) {
+        logContainer.classList.remove('max-h-48');
+        logContainer.classList.add('max-h-96');
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        logContainer.classList.remove('max-h-96');
+        logContainer.classList.add('max-h-48');
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    }
 }
 
 // Auto-refresh containers every 10 seconds

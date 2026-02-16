@@ -11,6 +11,7 @@ DEFAULT_CRON_SCHEDULE = os.getenv('DEFAULT_CRON_SCHEDULE', '0 3 * * *')
 # Sync engine defaults
 DEFAULT_WORKER_COUNT = int(os.getenv('DEFAULT_WORKER_COUNT', '6'))
 DEFAULT_LOGLEVEL = os.getenv('DEFAULT_LOGLEVEL', 'info')
+DEFAULT_DOWNLOAD_METHOD = os.getenv('DEFAULT_DOWNLOAD_METHOD', 'compressed')
 DEFAULT_RUN_ON_STARTUP = os.getenv('DEFAULT_RUN_ON_STARTUP', 'true').lower() == 'true'
 
 # User / group IDs

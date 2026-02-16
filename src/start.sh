@@ -29,11 +29,11 @@ mkdir -p "$DOWNLOAD_DIR" "$DOWNLOAD_DIR/tmp" "$PROFILE_DIR"
 # Set ownership and permissions
 # For mounted volumes, we need to ensure the user inside the container can write
 if ! chown -R abc:abc "$DOWNLOAD_DIR" "$PROFILE_DIR" /app 2>/dev/null; then
-    warning "Failed to change ownership of directories. If using custom paths, ensure host directories are owned by UID:GID ${PUID}:${PGID}"
+    warn "Failed to change ownership of directories. If using custom paths, ensure host directories are owned by UID:GID ${PUID}:${PGID}"
 fi
 
 if ! chmod -R 755 "$DOWNLOAD_DIR" "$PROFILE_DIR" 2>/dev/null; then
-    warning "Failed to change permissions of directories. Some operations may fail."
+    warn "Failed to change permissions of directories. Some operations may fail."
 fi
 
 # Ensure Profile directory subdirectories exist and are writable
@@ -74,8 +74,8 @@ chown abc:abc "$ALBUMS_CONFIG_FILE" 2>/dev/null || true
 
 # Verify that abc user can actually write to profile directory
 if ! sudo -u abc test -w "$PROFILE_DIR"; then
-    warning "Profile directory $PROFILE_DIR is not writable by user abc (UID ${PUID})"
-    warning "This may cause login issues. Please run on host: sudo chown -R ${PUID}:${PGID} <your_custom_profile_path>"
+    warn "Profile directory $PROFILE_DIR is not writable by user abc (UID ${PUID})"
+    warn "This may cause login issues. Please run on host: sudo chown -R ${PUID}:${PGID} <your_custom_profile_path>"
 fi
 
 # Start VNC display stack if enabled
@@ -84,6 +84,9 @@ if [ "${ENABLE_VNC}" = "true" ]; then
     export DISPLAY
 
     info "Starting VNC display stack (Xvfb + x11vnc + noVNC)..."
+
+    # Clean stale lock files from previous container runs
+    rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
     # Start virtual display
     Xvfb :99 -screen 0 1920x1080x24 -ac &
@@ -99,7 +102,7 @@ if [ "${ENABLE_VNC}" = "true" ]; then
 fi
 
 if [[ "$1" == 'no-cron' ]]; then
-    sudo -E -u abc sh /app/sync.sh
+    sudo -E -H -u abc sh /app/sync.sh
 else
     info "scheduling cron job for: $CRON_SCHEDULE"
     LOGFIFO='/var/log/cron.fifo'
@@ -113,7 +116,7 @@ else
     # Run sync immediately on startup if RUN_ON_STARTUP is set
     if [[ "$RUN_ON_STARTUP" == "true" ]] || [[ "$RUN_ON_STARTUP" == "1" ]]; then
         info "running initial sync on startup..."
-        sudo -E -u abc sh /app/sync.sh > "$LOGFIFO" 2>&1
+        sudo -E -H -u abc sh /app/sync.sh > "$LOGFIFO" 2>&1
         info "initial sync completed, starting cron scheduler..."
     fi
 
@@ -124,6 +127,7 @@ else
     CRON="$CRON\nHEALTHCHECK_HOST='$HEALTHCHECK_HOST'"
     CRON="$CRON\nLOGLEVEL='$LOGLEVEL'"
     CRON="$CRON\nWORKER_COUNT='$WORKER_COUNT'"
+    CRON="$CRON\nDOWNLOAD_METHOD='$DOWNLOAD_METHOD'"
     CRON="$CRON\nGPHOTOS_CDP_ARGS='$GPHOTOS_CDP_ARGS'"
     CRON="$CRON\nALBUMS='$ALBUMS'"
     CRON="$CRON\nGPHOTOS_LOCALE_FILE='$GPHOTOS_LOCALE_FILE'"

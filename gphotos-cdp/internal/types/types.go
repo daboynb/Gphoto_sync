@@ -49,6 +49,7 @@ type Session struct {
 	DownloadedIds      DownloadedIdsManager // New: tracks downloaded IDs in file
 	NewDownloadChan    chan NewDownload
 	SkippedCount       uint64
+	DownloadMethod     string // "compressed" or "original"
 }
 
 // ContextLocks manages locks for tab navigation

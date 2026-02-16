@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -54,51 +55,154 @@ func DownloadAndProcessItem(s *types.Session, ctx context.Context, log zerolog.L
 	errChan := make(chan error)
 	jobsRemaining := 2 // One for photo data extraction, one for download
 
-	go func() {
-		log.Trace().Msgf("getting photo data")
-		data, err := GetPhotoData(s, ctx, log, imageId)
-		if err != nil {
-			errChan <- err
-		} else {
-			errChan <- nil
-			photoDataChan <- data
-		}
-	}()
+	if s.DownloadMethod == "original" {
+		// ORIGINAL METHOD: extract direct URL + epoch timestamp from page JavaScript
+		go func() {
+			start := time.Now()
+			log := log.With().Str("version", "original").Logger()
 
-	// Download only the compressed version using Shift+D
-	go func() {
-		start := time.Now()
-		log := log.With().Str("version", "compressed").Logger()
-		var photoData types.PhotoData
-		var err error
-		for i := 0; i < 3; i++ {
-			var downloadInfo types.NewDownload
-			var downloadProgressChan <-chan bool
-			downloadInfo, downloadProgressChan, err = StartDownload(s, ctx, log, imageId, newDownloadChan)
-			if err != nil {
-				log.Trace().Msgf("download failed: %v", err)
-				break
+			// Step 1: Extract download URL and timestamp from page scripts
+			origData, extractErr := ExtractOriginalDownloadData(ctx, log, imageId)
+			if extractErr != nil {
+				log.Warn().Err(extractErr).Msg("original download extraction failed, falling back to compressed method")
+				// Fallback: get photo data the normal way (aria-label)
+				go func() {
+					data, err := GetPhotoData(s, ctx, log, imageId)
+					if err != nil {
+						errChan <- err
+					} else {
+						errChan <- nil
+						photoDataChan <- data
+					}
+				}()
+				// Fallback: use compressed download
+				var photoData types.PhotoData
+				var err error
+				for i := 0; i < 3; i++ {
+					var downloadInfo types.NewDownload
+					var downloadProgressChan <-chan bool
+					downloadInfo, downloadProgressChan, err = StartDownload(s, ctx, log, imageId, newDownloadChan)
+					if err != nil {
+						break
+					}
+					err = WaitForDownload(log, downloadInfo, downloadProgressChan, imageId)
+					if err != nil {
+						break
+					}
+					if photoData == (types.PhotoData{}) {
+						photoData = <-photoDataChan
+					}
+					err = ProcessDownload(s, log, downloadInfo, imageId, photoData, runFlag)
+					if errors.Is(err, ErrUnexpectedDownload) {
+						log.Err(err).Msgf("error processing download for %s (try %d/3)", imageId, i+1)
+						continue
+					}
+					break
+				}
+				errChan <- err
+				return
+			}
+
+			// Step 2: Convert epoch timestamp to time.Time (no aria-label parsing needed!)
+			var photoData types.PhotoData
+			if origData.TimestampMs > 0 {
+				photoData = types.PhotoData{
+					Date:     time.UnixMilli(origData.TimestampMs),
+					Filename: imageId,
+				}
+				log.Debug().Msgf("extracted epoch timestamp: %v", photoData.Date.Format("2006-01-02 15:04:05"))
+				// Signal photo data extraction as done
+				errChan <- nil
+				photoDataChan <- photoData
 			} else {
+				// Timestamp is 0 but URL was extracted — fallback to GetPhotoData for the date only
+				log.Warn().Msg("epoch timestamp is 0, falling back to aria-label for date")
+				go func() {
+					data, err := GetPhotoData(s, ctx, log, imageId)
+					if err != nil {
+						errChan <- err
+					} else {
+						errChan <- nil
+						photoDataChan <- data
+					}
+				}()
+			}
+
+			// Step 3: Trigger download using direct URL
+			var err error
+			for i := 0; i < 3; i++ {
+				var downloadInfo types.NewDownload
+				var downloadProgressChan <-chan bool
+				downloadInfo, downloadProgressChan, err = StartOriginalDownload(s, ctx, log, imageId, newDownloadChan, origData.DownloadURL)
+				if err != nil {
+					log.Trace().Msgf("original download failed: %v", err)
+					break
+				}
 				err = WaitForDownload(log, downloadInfo, downloadProgressChan, imageId)
 				if err != nil {
 					break
 				}
-
-				log.Trace().Msgf("download completed, will continue processing when photo data is ready")
+				log.Trace().Msg("original download completed, processing")
 				if photoData == (types.PhotoData{}) {
 					photoData = <-photoDataChan
 				}
 				err = ProcessDownload(s, log, downloadInfo, imageId, photoData, runFlag)
 				if errors.Is(err, ErrUnexpectedDownload) {
-					log.Err(err).Msgf("error processing download for %s (try %d/3)", imageId, i+1)
+					log.Err(err).Msgf("error processing original download for %s (try %d/3)", imageId, i+1)
 					continue
 				}
-				log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("download done")
+				log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msg("original download done")
 				break
 			}
-		}
-		errChan <- err
-	}()
+			errChan <- err
+		}()
+	} else {
+		// COMPRESSED METHOD (default): use Shift+D shortcut — unchanged from original code
+		go func() {
+			log.Trace().Msgf("getting photo data")
+			data, err := GetPhotoData(s, ctx, log, imageId)
+			if err != nil {
+				errChan <- err
+			} else {
+				errChan <- nil
+				photoDataChan <- data
+			}
+		}()
+
+		go func() {
+			start := time.Now()
+			log := log.With().Str("version", "compressed").Logger()
+			var photoData types.PhotoData
+			var err error
+			for i := 0; i < 3; i++ {
+				var downloadInfo types.NewDownload
+				var downloadProgressChan <-chan bool
+				downloadInfo, downloadProgressChan, err = StartDownload(s, ctx, log, imageId, newDownloadChan)
+				if err != nil {
+					log.Trace().Msgf("download failed: %v", err)
+					break
+				} else {
+					err = WaitForDownload(log, downloadInfo, downloadProgressChan, imageId)
+					if err != nil {
+						break
+					}
+
+					log.Trace().Msgf("download completed, will continue processing when photo data is ready")
+					if photoData == (types.PhotoData{}) {
+						photoData = <-photoDataChan
+					}
+					err = ProcessDownload(s, log, downloadInfo, imageId, photoData, runFlag)
+					if errors.Is(err, ErrUnexpectedDownload) {
+						log.Err(err).Msgf("error processing download for %s (try %d/3)", imageId, i+1)
+						continue
+					}
+					log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msgf("download done")
+					break
+				}
+			}
+			errChan <- err
+		}()
+	}
 
 	go func() {
 		deadline := time.NewTimer(30 * time.Minute)
@@ -169,7 +273,7 @@ func StartDownload(s *types.Session, ctx context.Context, log zerolog.Logger, im
 		select {
 		case <-requestTimer.C:
 			// Use Shift+D keyboard shortcut to trigger download
-			if err := requestDownload(ctx, log); err != nil {
+			if err := RequestDownload(ctx, log); err != nil {
 				return types.NewDownload{}, nil, err
 			}
 			refreshTimer = time.NewTimer(5 * time.Second)
@@ -417,17 +521,12 @@ func GetPhotoData(s *types.Session, ctx context.Context, log zerolog.Logger, ima
 			}
 
 			// Extract data from the "Foto/Video - Orientation - Date, Time" aria-label
-			var photoInfoLabel string
 			sleepDuration := int(math.Min(2000, (math.Pow(1.5, float64(n-1))-1)*50))
-			if err := chromedp.Run(ctx,
-				chromedp.Sleep(time.Duration(sleepDuration)*time.Millisecond),
-				chromedp.Evaluate(`
-					[...document.querySelectorAll('[data-p*="`+imageId+`"] [aria-label]')]
-						.map(el => el.getAttribute('aria-label'))
-						.find(label => label && (label.startsWith('Foto - ') || label.startsWith('Video - ') ||
-						                          label.startsWith('Photo - ') || label.startsWith('Video - '))) || ''
-				`, &photoInfoLabel),
-			); err != nil {
+			if err := chromedp.Run(ctx, chromedp.Sleep(time.Duration(sleepDuration)*time.Millisecond)); err != nil {
+				return fmt.Errorf("error during pre-extraction wait: %w", err)
+			}
+			photoInfoLabel, err := ExtractPhotoInfoLabel(ctx, imageId)
+			if err != nil {
 				return fmt.Errorf("could not extract photo info label due to %w", err)
 			}
 
@@ -543,9 +642,9 @@ func StartDownloadListener(ctx context.Context, newDownloadChan chan types.NewDo
 	})
 }
 
-// requestDownload sends the Shift+D keyboard shortcut to start the download of the currently
+// RequestDownload sends the Shift+D keyboard shortcut to start the download of the currently
 // viewed item. This is the standard download method.
-func requestDownload(ctx context.Context, log zerolog.Logger) error {
+func RequestDownload(ctx context.Context, log zerolog.Logger) error {
 	unlock := navigation.AcquireTabLock(log, "to request download")
 	defer unlock()
 	start := time.Now()
@@ -606,11 +705,290 @@ func makeOutDir(s *types.Session, imageId string, date time.Time) (string, error
 	return newDir, nil
 }
 
+// CountDataPElements counts elements with data-p attribute containing the given image ID.
+// This selector is the basis for all photo metadata extraction on the detail page.
+func CountDataPElements(ctx context.Context, imageId string) (int, error) {
+	var count int
+	err := chromedp.Run(ctx,
+		chromedp.Evaluate(fmt.Sprintf(`
+			document.querySelectorAll('[data-p*="%s"]').length
+		`, imageId), &count),
+	)
+	return count, err
+}
+
+// CountAriaLabelElements counts [aria-label] elements inside [data-p] containers
+// for the given image ID. These are the elements from which ExtractPhotoInfoLabel
+// reads the photo/video metadata.
+func CountAriaLabelElements(ctx context.Context, imageId string) (int, error) {
+	var count int
+	err := chromedp.Run(ctx,
+		chromedp.Evaluate(fmt.Sprintf(`
+			document.querySelectorAll('[data-p*="%s"] [aria-label]').length
+		`, imageId), &count),
+	)
+	return count, err
+}
+
+// CheckDS5DataExists checks whether AF_initDataCallback with 'ds:5' key exists
+// in the page scripts. This is the precondition for ExtractOriginalDownloadData.
+func CheckDS5DataExists(ctx context.Context) (bool, error) {
+	var found bool
+	err := chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			(function() {
+				var scripts = document.querySelectorAll('script');
+				for (var i = 0; i < scripts.length; i++) {
+					var text = scripts[i].textContent;
+					if (text.indexOf('AF_initDataCallback') >= 0 && text.indexOf("'ds:5'") >= 0) {
+						return true;
+					}
+				}
+				return false;
+			})()
+		`, &found),
+	)
+	return found, err
+}
+
+// ExtractPhotoInfoLabel extracts the photo/video metadata aria-label from the current page.
+// This is the exact same extraction logic used by GetPhotoData.
+func ExtractPhotoInfoLabel(ctx context.Context, imageId string) (string, error) {
+	var label string
+	err := chromedp.Run(ctx,
+		chromedp.Evaluate(fmt.Sprintf(`
+			[...document.querySelectorAll('[data-p*="%s"] [aria-label]')]
+				.map(el => el.getAttribute('aria-label'))
+				.find(label => label && (label.startsWith('Foto - ') || label.startsWith('Video - ') ||
+				                          label.startsWith('Photo - ') || label.startsWith('Video - '))) || ''
+		`, imageId), &label),
+	)
+	return label, err
+}
+
 // getAriaLabelSelector returns a CSS selector for an aria-label
 func getAriaLabelSelector(label string) string {
 	// Simple implementation - assumes "startsWith" matching
 	// In production you'd parse the NodeLabelMatch structure
 	return fmt.Sprintf("[aria-label^=\"%s\"]", label)
+}
+
+// OriginalDownloadData contains data extracted from the page's JavaScript for the "original" download method
+type OriginalDownloadData struct {
+	DownloadURL string
+	TimestampMs int64
+	PhotoID     string
+}
+
+// ExtractOriginalDownloadData extracts the direct download URL and timestamp from the page's
+// AF_initDataCallback JavaScript data (key 'ds:5').
+func ExtractOriginalDownloadData(ctx context.Context, log zerolog.Logger, imageId string) (OriginalDownloadData, error) {
+	log.Debug().Msg("extracting original download data from page scripts")
+
+	var result OriginalDownloadData
+	var lastErr error
+
+	for attempt := 1; attempt <= 5; attempt++ {
+		log := log.With().Int("attempt", attempt).Logger()
+
+		// Wait before retry (exponential backoff)
+		if attempt > 1 {
+			backoff := time.Duration(attempt*attempt) * 500 * time.Millisecond
+			log.Debug().Msgf("retrying extraction after %v", backoff)
+			time.Sleep(backoff)
+		}
+
+		// JavaScript that searches for AF_initDataCallback with key 'ds:5' and extracts the data
+		var jsonResult string
+		extractJS := `
+		(function() {
+			try {
+				var scripts = document.querySelectorAll('script');
+				for (var i = 0; i < scripts.length; i++) {
+					var text = scripts[i].textContent;
+					if (text.indexOf("AF_initDataCallback") >= 0 && text.indexOf("'ds:5'") >= 0) {
+						// Extract the data array from the callback
+						var dataMatch = text.match(/data:\s*(\[[\s\S]*?\])\s*,\s*sideChannel/);
+						if (!dataMatch) {
+							dataMatch = text.match(/data:\s*(\[[\s\S]*?\])\s*\}/);
+						}
+						if (dataMatch && dataMatch[1]) {
+							var data = eval(dataMatch[1]);
+							// data[1] contains the download URL (the one with =s0-d-I or similar)
+							// data[0][2] contains the timestamp in milliseconds
+							// data[0][0] contains the photo ID
+							var downloadUrl = '';
+							var timestampMs = 0;
+							var photoId = '';
+
+							if (data && data[0] && data[0].length > 2) {
+								photoId = data[0][0] || '';
+								timestampMs = data[0][2] || 0;
+							}
+							if (data && data[1]) {
+								// Find the URL - it's typically data[1] and contains =s0-d-I or similar pattern
+								function isGUC(s) { return typeof s === 'string' && (s.indexOf('googleusercontent.com') >= 0 || s.indexOf('usercontent.google.com') >= 0); }
+								if (isGUC(data[1])) {
+									downloadUrl = data[1];
+								} else if (Array.isArray(data[1])) {
+									for (var j = 0; j < data[1].length; j++) {
+										if (isGUC(data[1][j])) {
+											downloadUrl = data[1][j];
+											break;
+										}
+									}
+								}
+							}
+
+							return JSON.stringify({
+								url: downloadUrl,
+								timestamp_ms: timestampMs,
+								photo_id: photoId
+							});
+						}
+					}
+				}
+				return JSON.stringify({error: 'ds:5 data not found'});
+			} catch(e) {
+				return JSON.stringify({error: e.toString()});
+			}
+		})()
+		`
+
+		unlock := navigation.AcquireTabLock(log, "to extract original download data")
+		err := chromedp.Run(ctx,
+			target.ActivateTarget(chromedp.FromContext(ctx).Target.TargetID),
+			chromedp.Evaluate(extractJS, &jsonResult),
+		)
+		unlock()
+
+		if err != nil {
+			lastErr = fmt.Errorf("chromedp evaluate failed: %w", err)
+			log.Debug().Err(lastErr).Msg("extraction failed")
+			continue
+		}
+
+		// Parse the JSON result
+		var parsed struct {
+			URL         string `json:"url"`
+			TimestampMs int64  `json:"timestamp_ms"`
+			PhotoID     string `json:"photo_id"`
+			Error       string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(jsonResult), &parsed); err != nil {
+			lastErr = fmt.Errorf("failed to parse extraction result: %w", err)
+			log.Debug().Err(lastErr).Msg("JSON parse failed")
+			continue
+		}
+
+		if parsed.Error != "" {
+			lastErr = fmt.Errorf("extraction error: %s", parsed.Error)
+			log.Debug().Err(lastErr).Msg("JavaScript extraction reported error")
+			continue
+		}
+
+		if parsed.URL == "" {
+			lastErr = fmt.Errorf("extracted empty download URL")
+			log.Debug().Msg("empty download URL")
+			continue
+		}
+
+		// Ensure the URL requests original quality by appending =d (download original)
+		// The ds:5 URL may have display-quality parameters (e.g. =s1600) — strip and replace
+		dlURL := parsed.URL
+		if idx := strings.LastIndex(dlURL, "="); idx > 0 && !strings.Contains(dlURL[idx:], "/") {
+			dlURL = dlURL[:idx] + "=d"
+		} else {
+			dlURL = dlURL + "=d"
+		}
+
+		result = OriginalDownloadData{
+			DownloadURL: dlURL,
+			TimestampMs: parsed.TimestampMs,
+			PhotoID:     parsed.PhotoID,
+		}
+		log.Debug().Str("photoId", result.PhotoID).Str("url", dlURL).Int64("timestampMs", result.TimestampMs).Msg("successfully extracted original download data")
+		return result, nil
+	}
+
+	return OriginalDownloadData{}, fmt.Errorf("failed to extract original download data after 5 attempts: %w", lastErr)
+}
+
+// requestOriginalDownload triggers a download by creating a temporary <a download> element
+// pointing to the direct URL. Chrome treats this as a download, triggering the existing
+// CDP download event listeners.
+func requestOriginalDownload(ctx context.Context, log zerolog.Logger, downloadURL string) error {
+	unlock := navigation.AcquireTabLock(log, "to request original download")
+	defer unlock()
+	start := time.Now()
+
+	log.Debug().Msg("requesting original download via <a download> element")
+	target.ActivateTarget(chromedp.FromContext(ctx).Target.TargetID).Do(ctx)
+
+	// Create a temporary <a> element with download attribute and click it
+	downloadJS := fmt.Sprintf(`
+	(function() {
+		var a = document.createElement('a');
+		a.href = %q;
+		a.download = '';
+		a.style.display = 'none';
+		document.body.appendChild(a);
+		a.click();
+		setTimeout(function() { document.body.removeChild(a); }, 1000);
+		return true;
+	})()
+	`, downloadURL)
+
+	var success bool
+	if err := chromedp.Run(ctx, chromedp.Evaluate(downloadJS, &success)); err != nil {
+		return fmt.Errorf("failed to trigger original download: %w", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	log.Debug().Int64("duration", time.Since(start).Milliseconds()).Msg("done requesting original download")
+	return nil
+}
+
+// StartOriginalDownload starts the download using the direct URL method.
+// It has the same structure as StartDownload but uses requestOriginalDownload instead of requestDownload.
+func StartOriginalDownload(s *types.Session, ctx context.Context, log zerolog.Logger, imageId string, downloadChan <-chan types.NewDownload, downloadURL string) (newDownload types.NewDownload, progressChan <-chan bool, err error) {
+	log.Trace().Msgf("entering startOriginalDownload()")
+
+	start := time.Now()
+
+	timeoutTimer := time.NewTimer(120 * time.Second)
+	refreshTimer := time.NewTimer(120 * time.Second)
+	requestTimer := time.NewTimer(0 * time.Second)
+
+	log.Trace().Msgf("requesting original download from tab %s", chromedp.FromContext(ctx).Target.TargetID)
+
+	for {
+		select {
+		case <-requestTimer.C:
+			if err := requestOriginalDownload(ctx, log, downloadURL); err != nil {
+				return types.NewDownload{}, nil, err
+			}
+			refreshTimer = time.NewTimer(5 * time.Second)
+		case <-refreshTimer.C:
+			log.Debug().Msgf("reloading page because original download failed to start")
+			if err := navigation.NavigateToPhoto(s, ctx, log, imageId); err != nil {
+				log.Error().Msgf("startOriginalDownload: %s", err.Error())
+				refreshTimer = time.NewTimer(1 * time.Second)
+			} else {
+				requestTimer = time.NewTimer(100 * time.Millisecond)
+			}
+		case <-timeoutTimer.C:
+			return types.NewDownload{}, nil, fmt.Errorf("timeout waiting for original download to start for %v", imageId)
+		case newDownload := <-downloadChan:
+			log.Trace().Msgf("downloadChan: %v", newDownload)
+			log.Debug().Int64("duration", time.Since(start).Milliseconds()).Str("GUID", newDownload.GUID).Msgf("original download started")
+			return newDownload, newDownload.ProgressChan, nil
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		log.Trace().Msgf("checking original download start status")
+	}
 }
 
 // DownloadWorker processes download jobs in a worker goroutine
@@ -677,7 +1055,9 @@ func DoWorkerBatchItem(s *types.Session, ctx context.Context, log zerolog.Logger
 	}
 	log.Trace().Msgf("current location: %s", previousLocation)
 	atExpectedUrl := previousLocation == expectedLocation
-	if isConsecutive && !atExpectedUrl && strings.HasPrefix(previousLocation, session.GphotosURL) {
+	// Skip right-arrow optimization for "original" method: SPA navigation doesn't reload
+	// the AF_initDataCallback scripts needed for direct URL extraction.
+	if isConsecutive && !atExpectedUrl && strings.HasPrefix(previousLocation, session.GphotosURL) && s.DownloadMethod != "original" {
 		var location string
 		// pressing right arrow to navigate to the next item (batch jobs should be sequential)
 		log.Trace().Msgf("navigating to next item by right arrow press (%s)", expectedLocation)

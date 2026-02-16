@@ -37,6 +37,7 @@ def api_defaults():
         'cron_schedule': config.DEFAULT_CRON_SCHEDULE,
         'worker_count': config.DEFAULT_WORKER_COUNT,
         'loglevel': config.DEFAULT_LOGLEVEL,
+        'download_method': config.DEFAULT_DOWNLOAD_METHOD,
         'run_on_startup': config.DEFAULT_RUN_ON_STARTUP,
         'puid': config.DEFAULT_PUID,
         'pgid': config.DEFAULT_PGID,
@@ -88,6 +89,7 @@ def create_compose(profile_name):
     run_on_startup = req_config.get('run_on_startup', config.DEFAULT_RUN_ON_STARTUP)
     loglevel = req_config.get('loglevel', config.DEFAULT_LOGLEVEL)
     worker_count = req_config.get('worker_count', config.DEFAULT_WORKER_COUNT)
+    download_method = req_config.get('download_method', config.DEFAULT_DOWNLOAD_METHOD)
     albums = req_config.get('albums', '')
     timezone = req_config.get('timezone', config.DEFAULT_TIMEZONE)
     puid = req_config.get('puid', config.DEFAULT_PUID)
@@ -108,6 +110,7 @@ def create_compose(profile_name):
         f'      - LOGLEVEL={loglevel}',
         f'      - TZ={timezone}',
         f'      - WORKER_COUNT={worker_count}',
+        f'      - DOWNLOAD_METHOD={download_method}',
     ]
 
     if enable_cron:
@@ -168,6 +171,11 @@ def create_compose(profile_name):
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
       - {workspace_path}/gphotos-cdp/months-config.json:/app/months-config.json
       - {download_dir}:/download
+      - {workspace_path}/gphotos-cdp/gphotos-cdp:/usr/bin/gphotos-cdp
+      - {workspace_path}/src/start.sh:/app/start.sh
+      - {workspace_path}/src/sync.sh:/app/sync.sh
+      - {workspace_path}/src/postdl.sh:/app/postdl.sh
+      - {workspace_path}/src/log.sh:/app/log.sh
     environment:
 {chr(10).join(env_vars)}
     networks:
@@ -224,6 +232,7 @@ def get_config(profile_name):
             'run_on_startup': config.DEFAULT_RUN_ON_STARTUP,
             'loglevel': config.DEFAULT_LOGLEVEL,
             'worker_count': config.DEFAULT_WORKER_COUNT,
+            'download_method': config.DEFAULT_DOWNLOAD_METHOD,
             'albums': '',
             'timezone': config.DEFAULT_TIMEZONE,
             'puid': config.DEFAULT_PUID,
@@ -250,6 +259,8 @@ def get_config(profile_name):
                     parsed['loglevel'] = val
                 elif key == 'WORKER_COUNT':
                     parsed['worker_count'] = int(val)
+                elif key == 'DOWNLOAD_METHOD':
+                    parsed['download_method'] = val
                 elif key == 'ALBUMS':
                     parsed['albums'] = val
                 elif key == 'TZ':

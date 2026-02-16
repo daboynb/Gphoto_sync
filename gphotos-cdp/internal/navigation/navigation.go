@@ -226,14 +226,18 @@ func navWithAction(ctx context.Context, action chromedp.Action) error {
 	return nil
 }
 
+// GetMainContainerSelector returns the CSS selector for the main scrollable container.
+// For album views, uses the nested c-wiz selector; otherwise uses [role="main"].
+func GetMainContainerSelector(albumIdFlag string) string {
+	if len(albumIdFlag) > 1 {
+		return `c-wiz c-wiz c-wiz`
+	}
+	return `[role="main"]`
+}
+
 // SetScrollPosition sets the scroll position of the main element
 func SetScrollPosition(ctx context.Context, pos float64, albumIdFlag string) error {
-	var mainSel string
-	if len(albumIdFlag) > 1 {
-		mainSel = `c-wiz c-wiz c-wiz`
-	} else {
-		mainSel = `[role="main"]`
-	}
+	mainSel := GetMainContainerSelector(albumIdFlag)
 
 	if err := chromedp.Evaluate(fmt.Sprintf(`
 		(function() {
@@ -249,12 +253,7 @@ func SetScrollPosition(ctx context.Context, pos float64, albumIdFlag string) err
 
 // GetScrollPosition gets the current scroll position
 func GetScrollPosition(ctx context.Context, sliderPos *float64, albumIdFlag string) error {
-	var mainSel string
-	if len(albumIdFlag) > 1 {
-		mainSel = `c-wiz c-wiz c-wiz`
-	} else {
-		mainSel = `[role="main"]`
-	}
+	mainSel := GetMainContainerSelector(albumIdFlag)
 
 	var err error
 	for i := 0; i < 3; i++ {

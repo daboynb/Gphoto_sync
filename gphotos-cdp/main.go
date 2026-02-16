@@ -31,6 +31,7 @@ import (
 
 	"gphotos-cdp/internal/config"
 	"gphotos-cdp/internal/download"
+	"gphotos-cdp/internal/healthcheck"
 	"gphotos-cdp/internal/navigation"
 	"gphotos-cdp/internal/session"
 	"gphotos-cdp/internal/sync"
@@ -47,6 +48,8 @@ var (
 	removedFlag     = flag.Bool("removed", false, "save list of files found locally that appear to be deleted from Google Photos")
 	workersFlag     = flag.Int64("workers", 1, "number of concurrent downloads allowed")
 	albumIdFlag     = flag.String("album", "", "ID of album to download, has no effect if lastdone file is found or if -start contains full URL")
+	dlMethodFlag    = flag.String("dlmethod", "compressed", "download method: 'compressed' (Shift+D) or 'original' (direct URL extraction)")
+	healthcheckFlag = flag.Bool("healthcheck", false, "run health check on fragile dependencies and exit")
 )
 
 var loc GPhotosLocale
@@ -85,6 +88,9 @@ func main() {
 		log.Fatal().Msgf("failed to create session: %v", err)
 	}
 	defer session.Shutdown(s)
+
+	s.DownloadMethod = *dlMethodFlag
+	log.Info().Msgf("download method: %s", s.DownloadMethod)
 
 	log.Info().Msgf("session dir: %v", s.ProfileDir)
 
@@ -147,6 +153,27 @@ func main() {
 	session.CheckLanguage(startupCtx)
 	log.Info().Msg("first navigation completed")
 	startupCancel()
+
+	// Health check mode: run tests and exit
+	if *healthcheckFlag {
+		log.Info().Msg("")
+		log.Info().Msg("========================================")
+		log.Info().Msg("HEALTH CHECK")
+		log.Info().Msg("========================================")
+		results := healthcheck.RunAll(s, ctx)
+		failed := 0
+		for _, r := range results {
+			if r.Status == "fail" {
+				failed++
+			}
+		}
+		if failed > 0 {
+			log.Warn().Msgf("health check completed with %d failures", failed)
+			os.Exit(1)
+		}
+		log.Info().Msg("health check completed successfully")
+		return
+	}
 
 	// Setup download listener on main context
 	download.StartDownloadListener(ctx, s.NewDownloadChan)

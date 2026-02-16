@@ -122,6 +122,16 @@ func NewSession(downloadDirFlag, profileFlag, albumIdFlag *string) (*types.Sessi
 func NewWindow(s *types.Session, headlessFlag *bool) (context.Context, context.CancelFunc) {
 	log.Info().Msgf("starting Chrome browser")
 
+	// Remove stale Chrome lock files from the profile directory.
+	// These are left behind when Chrome doesn't shut down cleanly
+	// (e.g. container killed) and prevent Chrome from starting again.
+	for _, lockFile := range []string{"SingletonLock", "SingletonSocket", "SingletonCookie"} {
+		p := filepath.Join(s.ProfileDir, lockFile)
+		if err := os.Remove(p); err == nil {
+			log.Warn().Msgf("removed stale lock file: %s", lockFile)
+		}
+	}
+
 	// Let's use as a base for allocator options (It implies Headless)
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserDataDir(s.ProfileDir),

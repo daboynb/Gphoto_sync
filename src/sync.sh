@@ -14,18 +14,19 @@ PROFILE_DIR="${PROFILE_DIR:-/tmp/gphotos-cdp}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-/download}"
 WORKER_COUNT=${WORKER_COUNT:-6}
 LOGLEVEL=${LOGLEVEL:-info}
+DOWNLOAD_METHOD=${DOWNLOAD_METHOD:-compressed}
 if [ "${ENABLE_VNC}" = "true" ]; then
-    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
+    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT -dlmethod $DOWNLOAD_METHOD $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
     export CHROMIUM_USER_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage"
 else
-    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -headless -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
+    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -headless -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT -dlmethod $DOWNLOAD_METHOD $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
 fi
 
 # Ensure profile directory is writable before attempting to remove lock files
 if [ -w "$PROFILE_DIR" ]; then
   rm -f "$PROFILE_DIR"/Singleton* 2>/dev/null || true
 else
-  warning "Profile directory $PROFILE_DIR is not writable, cannot remove Singleton lock files"
+  warn "Profile directory $PROFILE_DIR is not writable, cannot remove Singleton lock files"
 fi
 
 # Force English language in Chrome preferences
@@ -33,7 +34,7 @@ PREFS_FILE="$PROFILE_DIR/Default/Preferences"
 if [ -f "$PREFS_FILE" ] && [ -w "$PREFS_FILE" ]; then
   jq '.intl.accept_languages = "en-US,en"' "$PREFS_FILE" > "$PREFS_FILE.tmp" && mv "$PREFS_FILE.tmp" "$PREFS_FILE" 2>/dev/null || true
 elif [ -f "$PREFS_FILE" ]; then
-  warning "Preferences file exists but is not writable, cannot update language settings"
+  warn "Preferences file exists but is not writable, cannot update language settings"
 fi
 
 if [ -n "$ALBUMS" ]; then

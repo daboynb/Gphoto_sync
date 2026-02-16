@@ -1,0 +1,69 @@
+<!-- Health Check Modal -->
+<div id="healthcheck-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-3xl max-h-[85vh] flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+            <h2 class="text-xl font-bold text-gray-800">
+                <i class="fas fa-stethoscope text-teal-500"></i>
+                Dependency Health Check
+            </h2>
+            <button onclick="closeHealthCheckModal()" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Profile selector -->
+        <div id="healthcheck-setup" class="p-4 border-b">
+            <div class="flex items-center gap-3">
+                <label class="text-sm font-medium text-gray-700">Profile:</label>
+                <select id="healthcheck-profile" class="flex-1 px-3 py-2 border rounded-lg text-sm">
+                    <option value="">Loading profiles...</option>
+                </select>
+                <button id="healthcheck-run-btn" onclick="runHealthCheck()" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm">
+                    <i class="fas fa-play"></i> Run Health Check
+                </button>
+            </div>
+        </div>
+
+        <!-- Status indicator -->
+        <div id="healthcheck-status" class="p-4 border-b hidden">
+            <div class="flex items-center gap-3">
+                <i id="healthcheck-status-icon" class="fas fa-spinner fa-spin text-blue-600 text-xl"></i>
+                <div>
+                    <p class="font-semibold text-blue-900" id="healthcheck-status-text">Running...</p>
+                    <p class="text-sm text-blue-700" id="healthcheck-status-detail"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test results -->
+        <div id="healthcheck-results" class="flex-1 overflow-y-auto p-4">
+            <div id="healthcheck-tests" class="space-y-2"></div>
+        </div>
+
+        <!-- Log area -->
+        <div id="healthcheck-log-container" class="border-t max-h-48 overflow-y-auto bg-gray-900 hidden">
+            <div class="px-3 py-1 bg-gray-800 flex items-center justify-between sticky top-0">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-terminal text-green-400 text-xs"></i>
+                    <span class="text-xs text-gray-400">Container Log</span>
+                </div>
+                <button onclick="toggleHealthCheckLog()" class="text-xs text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-chevron-down" id="healthcheck-log-toggle-icon"></i>
+                </button>
+            </div>
+            <pre id="healthcheck-log" class="p-2 text-green-400 text-xs font-mono whitespace-pre-wrap"></pre>
+        </div>
+
+        <!-- Summary bar -->
+        <div id="healthcheck-summary" class="p-3 border-t bg-gray-50 hidden">
+            <div class="flex items-center justify-between">
+                <div class="flex gap-4 text-sm">
+                    <span class="text-green-600"><i class="fas fa-check-circle"></i> Passed: <strong id="healthcheck-passed">0</strong></span>
+                    <span class="text-red-600"><i class="fas fa-times-circle"></i> Failed: <strong id="healthcheck-failed">0</strong></span>
+                    <span class="text-gray-600">Total: <strong id="healthcheck-total">0</strong></span>
+                </div>
+                <div id="healthcheck-summary-badge"></div>
+            </div>
+        </div>
+    </div>
+</div>
