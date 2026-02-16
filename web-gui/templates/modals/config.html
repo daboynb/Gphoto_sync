@@ -202,6 +202,20 @@
                                placeholder="https://hc-ping.com/your-uuid">
                         <p class="text-xs text-gray-500 mt-1">Full healthcheck.io ping URL for monitoring (e.g., https://hc-ping.com/abc-123)</p>
                     </div>
+
+                    <!-- Enable VNC Viewer -->
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="config-enable-vnc"
+                                   class="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <span class="text-sm font-medium text-gray-700">
+                                <i class="fas fa-desktop"></i> Enable Browser Viewer (VNC)
+                            </span>
+                        </label>
+                        <p class="text-xs text-gray-500 ml-6 mt-1">
+                            See Chrome in real-time during sync. Uses more RAM (~200MB). A noVNC port will be auto-assigned.
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

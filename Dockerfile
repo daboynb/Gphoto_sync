@@ -51,6 +51,11 @@ RUN apt-get update && apt-get install -y \
         jq \
         wget \
         sudo \
+        xvfb \
+        x11vnc \
+        novnc \
+        websockify \
+        procps \
     --no-install-recommends && \
     wget https://dl.google.com/linux/direct/$CHROME_PACKAGE && \
     apt install -y ./$CHROME_PACKAGE && \

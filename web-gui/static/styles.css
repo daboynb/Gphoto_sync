@@ -234,6 +234,7 @@ body.dark-mode label {
 body.dark-mode #rebuild-modal .bg-white,
 body.dark-mode #log-modal .bg-white,
 body.dark-mode #vnc-auth-modal .bg-white,
+body.dark-mode #vnc-viewer-modal .bg-white,
 body.dark-mode #config-modal .bg-white,
 body.dark-mode #create-profile-modal .bg-white,
 body.dark-mode #confirm-modal .bg-white,

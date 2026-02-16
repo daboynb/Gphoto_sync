@@ -215,6 +215,12 @@ async function loadContainers() {
                                 <i class="fas fa-file-lines"></i> View Logs
                             </button>
                         `}
+                        ${container.vnc_enabled && container.vnc_port && container.status === 'running' ? `
+                            <button onclick="openVNCViewer('${container.display_name || container.name}', ${container.vnc_port})"
+                                    class="px-4 py-2 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm">
+                                <i class="fas fa-desktop"></i> View VNC
+                            </button>
+                        ` : ''}
                         ${container.status === 'running' ? `
                             <button onclick="stopContainer('${container.id}')"
                                     class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm">
@@ -809,7 +815,7 @@ function toggleAdvancedOptions() {
     }
 }
 
-function openConfigModal(profileName, displayName) {
+async function openConfigModal(profileName, displayName) {
     currentConfigProfileNum = profileName; // Store profile name instead of number
     isEditMode = false;
     document.getElementById('config-profile-name').textContent = displayName;
@@ -819,21 +825,31 @@ function openConfigModal(profileName, displayName) {
 
     document.getElementById('config-modal').classList.remove('hidden');
 
+    // Fetch defaults from backend
+    let defaults = {};
+    try {
+        const resp = await fetch('/api/defaults');
+        defaults = await resp.json();
+    } catch (e) {
+        console.warn('Failed to fetch defaults, using fallbacks', e);
+    }
+
     // Set default values for new profile
     document.getElementById('config-enable-cron').checked = true;
-    document.getElementById('config-cron').value = '0 3 * * *';
-    document.getElementById('config-run-on-startup').checked = true;
-    document.getElementById('config-loglevel').value = 'info';
-    document.getElementById('config-workers').value = 6;
+    document.getElementById('config-cron').value = defaults.cron_schedule || '0 3 * * *';
+    document.getElementById('config-run-on-startup').checked = defaults.run_on_startup !== undefined ? defaults.run_on_startup : true;
+    document.getElementById('config-loglevel').value = defaults.loglevel || 'info';
+    document.getElementById('config-workers').value = defaults.worker_count || 6;
     document.getElementById('config-albums').value = '';
-    document.getElementById('config-timezone').value = 'Europe/Rome';
+    document.getElementById('config-timezone').value = defaults.timezone || 'Europe/Rome';
     document.getElementById('config-photo-dir').value = '';
 
     // Advanced options defaults
-    document.getElementById('config-puid').value = 1000;
-    document.getElementById('config-pgid').value = 1000;
+    document.getElementById('config-puid').value = defaults.puid || 1000;
+    document.getElementById('config-pgid').value = defaults.pgid || 1000;
     document.getElementById('config-restart-schedule').value = '';
     document.getElementById('config-healthcheck-url').value = '';
+    document.getElementById('config-enable-vnc').checked = defaults.enable_vnc || false;
 
     // Show cron fields by default
     toggleCronSchedule();
@@ -855,30 +871,36 @@ async function editProfileConfig(profileName, displayName) {
     document.getElementById('config-save-text').textContent = 'Update Configuration';
 
     try {
-        // Load current configuration
-        const response = await fetch(`/api/get-config/${profileName}`);
-        const config = await response.json();
+        // Load current configuration and defaults in parallel
+        const [configResponse, defaultsResponse] = await Promise.all([
+            fetch(`/api/get-config/${profileName}`),
+            fetch('/api/defaults')
+        ]);
+        const config = await configResponse.json();
+        let defaults = {};
+        try { defaults = await defaultsResponse.json(); } catch (e) {}
 
         if (config.error) {
             showToast('Error loading configuration: ' + config.error, 'error');
             return;
         }
 
-        // Populate form with current values
+        // Populate form with current values, falling back to server defaults
         const isCronDisabled = config.cron_schedule === 'disabled' || config.cron_schedule === 'no-cron';
         document.getElementById('config-enable-cron').checked = !isCronDisabled;
-        document.getElementById('config-cron').value = isCronDisabled ? '0 3 * * *' : (config.cron_schedule || '0 3 * * *');
+        document.getElementById('config-cron').value = isCronDisabled ? (defaults.cron_schedule || '0 3 * * *') : (config.cron_schedule || defaults.cron_schedule || '0 3 * * *');
         document.getElementById('config-run-on-startup').checked = config.run_on_startup;
-        document.getElementById('config-loglevel').value = config.loglevel || 'info';
-        document.getElementById('config-workers').value = config.worker_count || 6;
-        document.getElementById('config-timezone').value = config.timezone || 'Europe/Rome';
+        document.getElementById('config-loglevel').value = config.loglevel || defaults.loglevel || 'info';
+        document.getElementById('config-workers').value = config.worker_count || defaults.worker_count || 6;
+        document.getElementById('config-timezone').value = config.timezone || defaults.timezone || 'Europe/Rome';
         document.getElementById('config-photo-dir').value = config.photo_dir || '';
 
         // Advanced options
-        document.getElementById('config-puid').value = config.puid || 1000;
-        document.getElementById('config-pgid').value = config.pgid || 1000;
+        document.getElementById('config-puid').value = config.puid || defaults.puid || 1000;
+        document.getElementById('config-pgid').value = config.pgid || defaults.pgid || 1000;
         document.getElementById('config-restart-schedule').value = config.restart_schedule || '';
         document.getElementById('config-healthcheck-url').value = config.healthcheck_url || '';
+        document.getElementById('config-enable-vnc').checked = config.enable_vnc || false;
 
         // Toggle cron fields visibility
         toggleCronSchedule();
@@ -941,7 +963,8 @@ async function saveConfiguration() {
         puid: parseInt(document.getElementById('config-puid').value),
         pgid: parseInt(document.getElementById('config-pgid').value),
         restart_schedule: document.getElementById('config-restart-schedule').value.trim(),
-        healthcheck_url: document.getElementById('config-healthcheck-url').value.trim()
+        healthcheck_url: document.getElementById('config-healthcheck-url').value.trim(),
+        enable_vnc: document.getElementById('config-enable-vnc').checked
     };
 
     try {
@@ -1161,6 +1184,31 @@ async function stopVNCAndSave() {
             }
         }
     );
+}
+
+// VNC Viewer
+let currentVNCUrl = '';
+
+function openVNCViewer(profileName, port) {
+    const currentHost = window.location.hostname;
+    const protocol = window.location.protocol;
+    currentVNCUrl = `${protocol}//${currentHost}:${port}/vnc.html?autoconnect=true&resize=scale`;
+
+    document.getElementById('vnc-viewer-profile-name').textContent = profileName;
+    document.getElementById('vnc-viewer-iframe').src = currentVNCUrl;
+    document.getElementById('vnc-viewer-modal').classList.remove('hidden');
+}
+
+function closeVNCViewer() {
+    document.getElementById('vnc-viewer-modal').classList.add('hidden');
+    document.getElementById('vnc-viewer-iframe').src = '';
+    currentVNCUrl = '';
+}
+
+function openVNCInteractive() {
+    if (currentVNCUrl) {
+        window.open(currentVNCUrl, '_blank');
+    }
 }
 
 // Folder Picker

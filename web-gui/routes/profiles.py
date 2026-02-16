@@ -17,6 +17,7 @@ from utils.docker_helpers import compose_up
 from utils.path_helpers import get_host_workspace_path
 from utils.profile_helpers import (
     extract_profile_name,
+    find_next_vnc_port,
     get_profile_metadata,
     sanitize_profile_name,
     save_profile_metadata,
@@ -26,6 +27,22 @@ from utils.validators import is_valid_cron, validate_profile_name
 logger = logging.getLogger(__name__)
 
 profiles_bp = Blueprint('profiles', __name__)
+
+
+@profiles_bp.route('/api/defaults')
+def api_defaults():
+    """Return configurable default values for the frontend."""
+    return jsonify({
+        'timezone': config.DEFAULT_TIMEZONE,
+        'cron_schedule': config.DEFAULT_CRON_SCHEDULE,
+        'worker_count': config.DEFAULT_WORKER_COUNT,
+        'loglevel': config.DEFAULT_LOGLEVEL,
+        'run_on_startup': config.DEFAULT_RUN_ON_STARTUP,
+        'puid': config.DEFAULT_PUID,
+        'pgid': config.DEFAULT_PGID,
+        'enable_vnc': config.DEFAULT_ENABLE_VNC,
+        'vnc_port_start': config.VNC_PORT_START,
+    })
 
 
 @profiles_bp.route('/api/available-profiles')
@@ -78,6 +95,7 @@ def create_compose(profile_name):
     photo_dir = req_config.get('photo_dir', '')
     restart_schedule = req_config.get('restart_schedule', '')
     healthcheck_url = req_config.get('healthcheck_url', '')
+    enable_vnc = req_config.get('enable_vnc', config.DEFAULT_ENABLE_VNC)
 
     # Validate cron if provided
     if enable_cron and not is_valid_cron(cron_schedule):
@@ -116,6 +134,9 @@ def create_compose(profile_name):
             env_vars.append(f'      - HEALTHCHECK_HOST={healthcheck_host}')
             env_vars.append(f'      - HEALTHCHECK_ID={healthcheck_id}')
 
+    if enable_vnc:
+        env_vars.append('      - ENABLE_VNC=true')
+
     command_line = "    command: no-cron\n" if not enable_cron else ""
 
     if photo_dir and photo_dir.strip():
@@ -125,13 +146,25 @@ def create_compose(profile_name):
 
     restart_policy = '"no"' if not enable_cron else "unless-stopped"
 
+    # VNC port mapping
+    vnc_port = None
+    if enable_vnc:
+        vnc_port = find_next_vnc_port()
+        ports_section = f"""    ports:
+      - "{vnc_port}:6080"
+"""
+    else:
+        ports_section = ""
+
+    prefix = get_container_prefix()
+
     compose_content = f"""services:
-  gphotos-sync-{profile_name}:
-    image: gphotos-sync:latest
-    container_name: gphotos-sync-{profile_name}
+  {prefix}-{profile_name}:
+    image: {prefix}:latest
+    container_name: {prefix}-{profile_name}
 {command_line}    restart: {restart_policy}
     privileged: true
-    volumes:
+{ports_section}    volumes:
       - {workspace_path}/profiles/{profile_name}:/tmp/gphotos-cdp
       - {workspace_path}/gphotos-cdp/months-config.json:/app/months-config.json
       - {download_dir}:/download
@@ -179,7 +212,7 @@ def get_config(profile_name):
         with open(compose_file, 'r') as f:
             compose_data = yaml.safe_load(f)
 
-        service_name = f'gphotos-sync-{profile_name}'
+        service_name = f'{get_container_prefix()}-{profile_name}'
         service_config = compose_data.get('services', {}).get(service_name, {})
         env_vars = service_config.get('environment', [])
         command = service_config.get('command', '')
@@ -197,6 +230,7 @@ def get_config(profile_name):
             'pgid': config.DEFAULT_PGID,
             'restart_schedule': '',
             'healthcheck_url': '',
+            'enable_vnc': False,
         }
 
         healthcheck_host = ''
@@ -230,6 +264,8 @@ def get_config(profile_name):
                     healthcheck_host = val
                 elif key == 'HEALTHCHECK_ID':
                     healthcheck_id = val
+                elif key == 'ENABLE_VNC':
+                    parsed['enable_vnc'] = val.lower() == 'true'
 
         if healthcheck_host and healthcheck_id:
             parsed['healthcheck_url'] = f"{healthcheck_host}/{healthcheck_id}"
@@ -244,6 +280,18 @@ def get_config(profile_name):
                 default_path = f'{workspace_path}/photos/{profile_name}'
                 if host_path != default_path:
                     parsed['photo_dir'] = host_path
+                break
+
+        # Extract VNC port from ports section
+        ports = service_config.get('ports', [])
+        parsed['vnc_port'] = None
+        for port_mapping in ports:
+            port_str = str(port_mapping)
+            if ':6080' in port_str:
+                try:
+                    parsed['vnc_port'] = int(port_str.split(':')[0].strip('"'))
+                except (ValueError, IndexError):
+                    pass
                 break
 
         return jsonify(parsed)
@@ -280,7 +328,7 @@ def start_profile(profile_name):
 @validate_profile_name
 def stop_profile(profile_name):
     """Stop and remove a profile container directly using docker commands."""
-    container_name = f'gphotos-sync-{profile_name}'
+    container_name = f'{get_container_prefix()}-{profile_name}'
 
     try:
         container = docker_client.containers.get(container_name)
@@ -308,7 +356,7 @@ def stop_profile(profile_name):
 @validate_profile_name
 def recreate_profile(profile_name):
     """Stop, remove and recreate a profile container to apply new config."""
-    container_name = f'gphotos-sync-{profile_name}'
+    container_name = f'{get_container_prefix()}-{profile_name}'
     compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     if not os.path.exists(compose_file):

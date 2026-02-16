@@ -14,7 +14,12 @@ PROFILE_DIR="${PROFILE_DIR:-/tmp/gphotos-cdp}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-/download}"
 WORKER_COUNT=${WORKER_COUNT:-6}
 LOGLEVEL=${LOGLEVEL:-info}
-GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -headless -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
+if [ "${ENABLE_VNC}" = "true" ]; then
+    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
+    export CHROMIUM_USER_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage"
+else
+    GPHOTOS_CDP_ARGS="-profile \"$PROFILE_DIR\" -headless -json -loglevel $LOGLEVEL -removed -workers $WORKER_COUNT $GPHOTOS_CDP_ARGS -run /app/postdl.sh"
+fi
 
 # Ensure profile directory is writable before attempting to remove lock files
 if [ -w "$PROFILE_DIR" ]; then

@@ -4,14 +4,14 @@ services:
       context: ./web-gui
     container_name: gphotos-web-gui
     restart: unless-stopped
+    env_file: .env
     ports:
-      - "8080:8080"
+      - "${WEB_GUI_PORT:-8080}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace  # Mount project directory to access profiles and create compose files
       - /:/host:ro  # Mount entire host filesystem as read-only for folder browsing
-    environment:
-      - CONTAINER_PREFIX=gphotos-sync
+      - ./web-gui:/app  # Live-mount source code for development (no rebuild needed)
     networks:
       - gphotos-network
 

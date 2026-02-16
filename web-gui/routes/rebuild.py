@@ -34,8 +34,10 @@ def rebuild_image_stream():
             msg = json.dumps({'type': 'log', 'message': '=== Cleaning Old Images ===\n'})
             yield f"data: {msg}\n\n"
 
+            prefix = get_container_prefix()
+
             prune_process = subprocess.Popen(
-                ['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}', '--filter', 'reference=*gphotos-sync*'],
+                ['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}', '--filter', f'reference=*{prefix}*'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
@@ -82,7 +84,7 @@ def rebuild_image_stream():
                     '--no-cache',
                     '--build-arg', f'BUILD_DATE={build_date}',
                     '--build-arg', f'IMAGE_VERSION={image_version}',
-                    '-t', 'gphotos-sync:latest',
+                    '-t', f'{prefix}:latest',
                     '.',
                 ],
                 cwd=config.WORKSPACE_PATH,
@@ -150,7 +152,7 @@ def rebuild_image_stream():
                 yield f"data: {msg}\n\n"
 
                 try:
-                    container = docker_client.containers.get(f'gphotos-sync-{profile_name}')
+                    container = docker_client.containers.get(f'{prefix}-{profile_name}')
                     container.stop(timeout=10)
                     container.remove()
                     msg = json.dumps({'type': 'log', 'message': '    Container stopped and removed\n'})
@@ -166,7 +168,7 @@ def rebuild_image_stream():
                 all_images = docker_client.images.list()
                 for img in all_images:
                     for tag in img.tags:
-                        if profile_name in tag.lower() and 'gphotos-sync' in tag.lower():
+                        if profile_name in tag.lower() and prefix in tag.lower():
                             try:
                                 docker_client.images.remove(tag, force=True)
                                 msg = json.dumps({'type': 'log', 'message': f'    Removed image: {tag}\n'})

@@ -73,6 +73,19 @@ def get_container_info(container):
 
     sync_status = check_sync_status(container)
 
+    # Check VNC status
+    vnc_enabled = env_vars.get('ENABLE_VNC', '').lower() == 'true'
+    vnc_port = None
+    if vnc_enabled:
+        # Extract host VNC port from container port bindings
+        ports = container.attrs.get('NetworkSettings', {}).get('Ports', {}) or {}
+        binding = ports.get('6080/tcp')
+        if binding and len(binding) > 0:
+            try:
+                vnc_port = int(binding[0].get('HostPort', 0))
+            except (ValueError, TypeError):
+                pass
+
     return {
         'id': container.id[:12],
         'name': container.name,
@@ -88,4 +101,6 @@ def get_container_info(container):
         'next_run': cron_info['next_run'],
         'time_until': cron_info['time_until'],
         'sync_status': sync_status,
+        'vnc_enabled': vnc_enabled,
+        'vnc_port': vnc_port,
     }

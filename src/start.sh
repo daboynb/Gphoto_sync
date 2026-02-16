@@ -78,6 +78,26 @@ if ! sudo -u abc test -w "$PROFILE_DIR"; then
     warning "This may cause login issues. Please run on host: sudo chown -R ${PUID}:${PGID} <your_custom_profile_path>"
 fi
 
+# Start VNC display stack if enabled
+if [ "${ENABLE_VNC}" = "true" ]; then
+    DISPLAY=:99
+    export DISPLAY
+
+    info "Starting VNC display stack (Xvfb + x11vnc + noVNC)..."
+
+    # Start virtual display
+    Xvfb :99 -screen 0 1920x1080x24 -ac &
+
+    # Start VNC server (no password, shared access)
+    x11vnc -display :99 -forever -shared -nopw -rfbport 5900 &
+
+    # Start noVNC websocket proxy
+    websockify --web /usr/share/novnc/ 6080 localhost:5900 &
+
+    sleep 1
+    info "VNC display stack started (noVNC on port 6080)"
+fi
+
 if [[ "$1" == 'no-cron' ]]; then
     sudo -E -u abc sh /app/sync.sh
 else
@@ -98,6 +118,8 @@ else
     fi
 
     CRON="CHROMIUM_USER_FLAGS='--no-sandbox'"
+    CRON="$CRON\nENABLE_VNC='${ENABLE_VNC:-}'"
+    CRON="$CRON\nDISPLAY='${DISPLAY:-}'"
     CRON="$CRON\nHEALTHCHECK_ID='$HEALTHCHECK_ID'"
     CRON="$CRON\nHEALTHCHECK_HOST='$HEALTHCHECK_HOST'"
     CRON="$CRON\nLOGLEVEL='$LOGLEVEL'"
