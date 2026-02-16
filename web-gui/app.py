@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 from flask import Flask, render_template
+from utils.logging_setup import setup_logging
+
+# Configure logging before anything else
+setup_logging()
 
 # Import blueprints
 from routes.containers import containers_bp

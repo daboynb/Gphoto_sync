@@ -1,86 +1,87 @@
 #!/usr/bin/env python3
-import os
-import json
-import subprocess
-import docker
 import glob
+import json
+import logging
+import os
 import shutil
 from datetime import datetime
+
+import docker
+import yaml
 from flask import Blueprint, jsonify, request
+
+from utils import config
+from utils.container_helpers import get_container_prefix, get_sync_containers
 from utils.docker_client import docker_client
-from utils.container_helpers import get_sync_containers, get_container_prefix
-from utils.profile_helpers import get_profile_metadata, sanitize_profile_name
+from utils.docker_helpers import compose_up
 from utils.path_helpers import get_host_workspace_path
+from utils.profile_helpers import (
+    extract_profile_name,
+    get_profile_metadata,
+    sanitize_profile_name,
+    save_profile_metadata,
+)
+from utils.validators import is_valid_cron, validate_profile_name
+
+logger = logging.getLogger(__name__)
 
 profiles_bp = Blueprint('profiles', __name__)
 
 
 @profiles_bp.route('/api/available-profiles')
 def api_available_profiles():
-    """Get profiles that exist but don't have running containers"""
-    # Find all profile directories in /workspace/profiles/
-    profile_dirs = glob.glob('/workspace/profiles/*')
-    available_profiles = []
+    """Get profiles that exist but don't have running containers."""
+    profile_dirs = glob.glob(os.path.join(config.PROFILES_DIR, '*'))
 
-    # Get running container names
     containers = get_sync_containers()
-    running_profiles = set()
-    for c in containers:
-        # Extract profile name from container name (e.g., "gphotos-sync-family" -> "family")
-        profile_name = c.name.replace(get_container_prefix() + '-', '', 1)
-        running_profiles.add(profile_name)
+    prefix = get_container_prefix()
+    running_profiles = {extract_profile_name(c.name, prefix) for c in containers}
 
-    # Check each profile directory
+    available_profiles = []
     for profile_path in profile_dirs:
         profile_name = os.path.basename(profile_path)
-
-        # Skip if already running
         if profile_name in running_profiles:
             continue
 
-        compose_file = f'/workspace/docker-compose.{profile_name}.yml'
-        has_compose = os.path.exists(compose_file)
-
-        # Get metadata for display name
+        compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
         metadata = get_profile_metadata(profile_name)
         display_name = metadata.get('display_name', profile_name)
 
-        # Show all profiles that exist but aren't running
         available_profiles.append({
             'name': profile_name,
             'display_name': display_name,
             'path': profile_path,
-            'has_compose': has_compose,
-            'compose_file': f'docker-compose.{profile_name}.yml'
+            'has_compose': os.path.exists(compose_file),
+            'compose_file': f'docker-compose.{profile_name}.yml',
         })
 
     return jsonify(sorted(available_profiles, key=lambda x: x['display_name']))
 
 
 @profiles_bp.route('/api/create-compose/<profile_name>', methods=['POST'])
+@validate_profile_name
 def create_compose(profile_name):
-    """Create docker-compose file for a profile with custom configuration"""
-    # Get configuration from request body
-    config = request.get_json() or {}
+    """Create docker-compose file for a profile with custom configuration."""
+    req_config = request.get_json() or {}
 
-    # Use absolute host paths to avoid Docker volume issues
     workspace_path = get_host_workspace_path()
 
-    # Extract configuration with defaults
-    enable_cron = config.get('enable_cron', True)
-    cron_schedule = config.get('cron_schedule', '0 3 * * *')
-    run_on_startup = config.get('run_on_startup', True)
-    loglevel = config.get('loglevel', 'info')
-    worker_count = config.get('worker_count', 6)
-    albums = config.get('albums', '')
-    timezone = config.get('timezone', 'Europe/Rome')
-    puid = config.get('puid', 1000)
-    pgid = config.get('pgid', 1000)
-    photo_dir = config.get('photo_dir', '')
+    enable_cron = req_config.get('enable_cron', True)
+    cron_schedule = req_config.get('cron_schedule', config.DEFAULT_CRON_SCHEDULE)
+    run_on_startup = req_config.get('run_on_startup', config.DEFAULT_RUN_ON_STARTUP)
+    loglevel = req_config.get('loglevel', config.DEFAULT_LOGLEVEL)
+    worker_count = req_config.get('worker_count', config.DEFAULT_WORKER_COUNT)
+    albums = req_config.get('albums', '')
+    timezone = req_config.get('timezone', config.DEFAULT_TIMEZONE)
+    puid = req_config.get('puid', config.DEFAULT_PUID)
+    pgid = req_config.get('pgid', config.DEFAULT_PGID)
+    photo_dir = req_config.get('photo_dir', '')
+    restart_schedule = req_config.get('restart_schedule', '')
+    healthcheck_url = req_config.get('healthcheck_url', '')
 
-    # Advanced options
-    restart_schedule = config.get('restart_schedule', '')
-    healthcheck_url = config.get('healthcheck_url', '')
+    # Validate cron if provided
+    if enable_cron and not is_valid_cron(cron_schedule):
+        return jsonify({'error': f'Invalid cron schedule: {cron_schedule}'}), 400
 
     # Build environment section
     env_vars = [
@@ -88,25 +89,20 @@ def create_compose(profile_name):
         f'      - PGID={pgid}',
         f'      - LOGLEVEL={loglevel}',
         f'      - TZ={timezone}',
-        f'      - WORKER_COUNT={worker_count}'
+        f'      - WORKER_COUNT={worker_count}',
     ]
 
-    # Only add cron-related env vars if cron is enabled
     if enable_cron:
         env_vars.insert(2, f'      - CRON_SCHEDULE={cron_schedule}')
         env_vars.insert(3, f'      - RUN_ON_STARTUP={str(run_on_startup).lower()}')
 
-    # Add ALBUMS env var if specified
     if albums and albums.strip() and albums.strip().upper() != 'ALL':
         env_vars.append(f'      - ALBUMS={albums.strip()}')
 
-    # Add restart schedule if specified
     if restart_schedule and restart_schedule.strip():
         env_vars.append(f'      - RESTART_SCHEDULE={restart_schedule.strip()}')
 
-    # Add healthcheck if specified
     if healthcheck_url and healthcheck_url.strip():
-        # Extract host and ID from full URL (e.g., https://hc-ping.com/abc-123)
         url = healthcheck_url.strip()
         if '/' in url:
             parts = url.rsplit('/', 1)
@@ -120,18 +116,13 @@ def create_compose(profile_name):
             env_vars.append(f'      - HEALTHCHECK_HOST={healthcheck_host}')
             env_vars.append(f'      - HEALTHCHECK_ID={healthcheck_id}')
 
-    # Build command line if cron is disabled
     command_line = "    command: no-cron\n" if not enable_cron else ""
 
-    # Determine photo directory (custom or default)
     if photo_dir and photo_dir.strip():
-        # Use custom directory (user-provided absolute path)
         download_dir = photo_dir.strip()
     else:
-        # Use default directory
         download_dir = f'{workspace_path}/photos/{profile_name}'
 
-    # Use restart: "no" for no-cron mode, otherwise unless-stopped
     restart_policy = '"no"' if not enable_cron else "unless-stopped"
 
     compose_content = f"""services:
@@ -154,46 +145,32 @@ networks:
     external: true
 """
 
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     try:
         with open(compose_file, 'w') as f:
             f.write(compose_content)
 
-        # Save photo_dir in profile metadata for later retrieval
-        metadata_file = f'/workspace/profiles/{profile_name}/.profile_metadata.json'
-        try:
-            if os.path.exists(metadata_file):
-                with open(metadata_file, 'r') as f:
-                    metadata = json.load(f)
-            else:
-                metadata = {'name': profile_name, 'display_name': profile_name}
-
-            # Update metadata with photo_dir
-            metadata['photo_dir'] = photo_dir if photo_dir and photo_dir.strip() else ''
-
-            with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
-        except Exception as meta_error:
-            # Don't fail if metadata update fails, just log it
-            print(f"Warning: Could not update metadata: {meta_error}")
+        save_profile_metadata(profile_name, {
+            'photo_dir': photo_dir if photo_dir and photo_dir.strip() else '',
+        })
 
         return jsonify({
             'status': 'created',
             'file': f'docker-compose.{profile_name}.yml',
             'message': f'Docker compose file created for profile {profile_name}',
-            'config': config
+            'config': req_config,
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except OSError as exc:
+        logger.error("Failed to write compose file for '%s': %s", profile_name, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @profiles_bp.route('/api/get-config/<profile_name>', methods=['GET'])
+@validate_profile_name
 def get_config(profile_name):
-    """Get current configuration from docker-compose file"""
-    import yaml
-
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    """Get current configuration from docker-compose file."""
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     if not os.path.exists(compose_file):
         return jsonify({'error': 'Docker compose file not found'}), 404
@@ -202,30 +179,26 @@ def get_config(profile_name):
         with open(compose_file, 'r') as f:
             compose_data = yaml.safe_load(f)
 
-        # Extract environment variables and command
         service_name = f'gphotos-sync-{profile_name}'
         service_config = compose_data.get('services', {}).get(service_name, {})
         env_vars = service_config.get('environment', [])
         command = service_config.get('command', '')
 
-        # Check if running in no-cron mode
         is_no_cron = command == 'no-cron'
 
-        # Parse environment variables
-        config = {
+        parsed = {
             'cron_schedule': 'disabled' if is_no_cron else '',
-            'run_on_startup': True,
-            'loglevel': 'info',
-            'worker_count': 6,
+            'run_on_startup': config.DEFAULT_RUN_ON_STARTUP,
+            'loglevel': config.DEFAULT_LOGLEVEL,
+            'worker_count': config.DEFAULT_WORKER_COUNT,
             'albums': '',
-            'timezone': 'Europe/Rome',
-            'puid': 1000,
-            'pgid': 1000,
+            'timezone': config.DEFAULT_TIMEZONE,
+            'puid': config.DEFAULT_PUID,
+            'pgid': config.DEFAULT_PGID,
             'restart_schedule': '',
-            'healthcheck_url': ''
+            'healthcheck_url': '',
         }
 
-        # Track healthcheck components
         healthcheck_host = ''
         healthcheck_id = ''
 
@@ -236,373 +209,334 @@ def get_config(profile_name):
                 val = val.strip()
 
                 if key == 'CRON_SCHEDULE':
-                    config['cron_schedule'] = val
+                    parsed['cron_schedule'] = val
                 elif key == 'RUN_ON_STARTUP':
-                    config['run_on_startup'] = val.lower() == 'true'
+                    parsed['run_on_startup'] = val.lower() == 'true'
                 elif key == 'LOGLEVEL':
-                    config['loglevel'] = val
+                    parsed['loglevel'] = val
                 elif key == 'WORKER_COUNT':
-                    config['worker_count'] = int(val)
+                    parsed['worker_count'] = int(val)
                 elif key == 'ALBUMS':
-                    config['albums'] = val
+                    parsed['albums'] = val
                 elif key == 'TZ':
-                    config['timezone'] = val
+                    parsed['timezone'] = val
                 elif key == 'PUID':
-                    config['puid'] = int(val)
+                    parsed['puid'] = int(val)
                 elif key == 'PGID':
-                    config['pgid'] = int(val)
+                    parsed['pgid'] = int(val)
                 elif key == 'RESTART_SCHEDULE':
-                    config['restart_schedule'] = val
+                    parsed['restart_schedule'] = val
                 elif key == 'HEALTHCHECK_HOST':
                     healthcheck_host = val
                 elif key == 'HEALTHCHECK_ID':
                     healthcheck_id = val
 
-        # Reconstruct full healthcheck URL if both parts are present
         if healthcheck_host and healthcheck_id:
-            config['healthcheck_url'] = f"{healthcheck_host}/{healthcheck_id}"
+            parsed['healthcheck_url'] = f"{healthcheck_host}/{healthcheck_id}"
 
         # Extract photo_dir from volumes
         volumes = service_config.get('volumes', [])
-        config['photo_dir'] = ''
+        parsed['photo_dir'] = ''
         for volume in volumes:
             if isinstance(volume, str) and ':/download' in volume:
-                # Extract the host path (before the colon)
                 host_path = volume.split(':')[0]
-                # Check if it's a custom directory (not the default pattern)
                 workspace_path = get_host_workspace_path()
                 default_path = f'{workspace_path}/photos/{profile_name}'
                 if host_path != default_path:
-                    config['photo_dir'] = host_path
+                    parsed['photo_dir'] = host_path
                 break
 
-        return jsonify(config)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify(parsed)
+    except (OSError, yaml.YAMLError) as exc:
+        logger.error("Error reading config for '%s': %s", profile_name, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @profiles_bp.route('/api/start-profile/<profile_name>', methods=['POST'])
+@validate_profile_name
 def start_profile(profile_name):
-    """Start a profile container using docker-compose"""
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    """Start a profile container using docker-compose."""
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     if not os.path.exists(compose_file):
         return jsonify({'error': f'docker-compose.{profile_name}.yml not found'}), 404
 
-    try:
-        # Run docker compose up -d with --build to ensure it uses the latest base image
-        result = subprocess.run(
-            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--build'],
-            cwd='/workspace',
-            capture_output=True,
-            text=True,
-            timeout=120  # Increased timeout for build
-        )
-
-        if result.returncode == 0:
-            return jsonify({
-                'status': 'started',
-                'message': f'Profile {profile_name} started successfully',
-                'output': result.stdout
-            })
-        else:
-            return jsonify({
-                'error': f'Failed to start profile {profile_name}',
-                'output': result.stderr
-            }), 500
-
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Command timed out'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    ok, output = compose_up(compose_file)
+    if ok:
+        logger.info("Profile '%s' started", profile_name)
+        return jsonify({
+            'status': 'started',
+            'message': f'Profile {profile_name} started successfully',
+            'output': output,
+        })
+    else:
+        return jsonify({
+            'error': f'Failed to start profile {profile_name}',
+            'output': output,
+        }), 500
 
 
 @profiles_bp.route('/api/stop-profile/<profile_name>', methods=['POST'])
+@validate_profile_name
 def stop_profile(profile_name):
-    """Stop and remove a profile container directly using docker commands"""
+    """Stop and remove a profile container directly using docker commands."""
     container_name = f'gphotos-sync-{profile_name}'
 
     try:
-        # Get the container
         container = docker_client.containers.get(container_name)
-
-        # Stop the container
         container.stop(timeout=10)
-
-        # Remove the container
         container.remove()
-
+        logger.info("Profile '%s' stopped and removed", profile_name)
         return jsonify({
             'status': 'stopped',
-            'message': f'Profile {profile_name} stopped and removed successfully'
+            'message': f'Profile {profile_name} stopped and removed successfully',
         })
-
     except docker.errors.NotFound:
         return jsonify({
             'status': 'stopped',
-            'message': f'Container {container_name} not found (already removed)'
+            'message': f'Container {container_name} not found (already removed)',
         })
-    except Exception as e:
+    except docker.errors.APIError as exc:
+        logger.error("Failed to stop profile '%s': %s", profile_name, exc)
         return jsonify({
             'error': f'Failed to stop profile {profile_name}',
-            'details': str(e)
+            'details': str(exc),
         }), 500
 
 
 @profiles_bp.route('/api/recreate-profile/<profile_name>', methods=['POST'])
+@validate_profile_name
 def recreate_profile(profile_name):
-    """Stop, remove and recreate a profile container using docker-compose to apply new config"""
+    """Stop, remove and recreate a profile container to apply new config."""
     container_name = f'gphotos-sync-{profile_name}'
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     if not os.path.exists(compose_file):
         return jsonify({'error': f'docker-compose.{profile_name}.yml not found'}), 404
 
     try:
-        # Step 1: Stop and remove the container using Docker API (doesn't affect other containers)
+        # Stop and remove existing container
         try:
             container = docker_client.containers.get(container_name)
             container.stop(timeout=10)
             container.remove()
         except docker.errors.NotFound:
-            pass  # Container already removed, that's fine
+            pass
 
-        # Step 2: Start the container using docker-compose (reads new config from yaml)
-        result = subprocess.run(
-            ['docker', 'compose', '-f', compose_file, 'up', '-d', '--build'],
-            cwd='/workspace',
-            capture_output=True,
-            text=True,
-            timeout=120  # Increased timeout for build
-        )
-
-        if result.returncode == 0:
+        # Recreate with compose
+        ok, output = compose_up(compose_file)
+        if ok:
+            logger.info("Profile '%s' recreated", profile_name)
             return jsonify({
                 'status': 'recreated',
                 'message': f'Profile {profile_name} recreated with new configuration',
-                'output': result.stdout
+                'output': output,
             })
         else:
             return jsonify({
                 'error': f'Failed to recreate profile {profile_name}',
-                'output': result.stderr
+                'output': output,
             }), 500
 
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Command timed out'}), 500
-    except Exception as e:
+    except docker.errors.APIError as exc:
+        logger.error("Failed to recreate profile '%s': %s", profile_name, exc)
         return jsonify({
             'error': f'Failed to recreate profile {profile_name}',
-            'details': str(e)
+            'details': str(exc),
         }), 500
 
 
 @profiles_bp.route('/api/create-new-profile', methods=['POST'])
 def create_new_profile():
-    """Create a new profile directory with custom name"""
+    """Create a new profile directory with custom name."""
     data = request.get_json()
     display_name = data.get('name', '').strip()
 
     if not display_name:
         return jsonify({'error': 'Profile name is required'}), 400
 
-    # Sanitize the name for filesystem use
     profile_name = sanitize_profile_name(display_name)
-
-    # Check if profile already exists
-    profile_dir = f'/workspace/profiles/{profile_name}'
-    photos_dir = f'/workspace/photos/{profile_name}'
+    profile_dir = os.path.join(config.PROFILES_DIR, profile_name)
+    photos_dir = os.path.join(config.PHOTOS_DIR, profile_name)
 
     if os.path.exists(profile_dir):
         return jsonify({'error': f'Profile "{profile_name}" already exists'}), 400
 
     try:
-        # Get PUID and PGID to create directories with correct ownership
-        puid = int(os.getenv('PUID', '1000'))
-        pgid = int(os.getenv('PGID', '1000'))
+        puid = config.DEFAULT_PUID
+        pgid = config.DEFAULT_PGID
 
-        # Create profiles base directory if needed
-        os.makedirs('/workspace/profiles', exist_ok=True)
-        os.makedirs('/workspace/photos', exist_ok=True)
+        os.makedirs(config.PROFILES_DIR, exist_ok=True)
+        os.makedirs(config.PHOTOS_DIR, exist_ok=True)
 
-        # Create profile directory
         os.makedirs(profile_dir, exist_ok=True)
         os.chown(profile_dir, puid, pgid)
 
-        # Create photos directory
         os.makedirs(photos_dir, exist_ok=True)
         os.chown(photos_dir, puid, pgid)
 
-        # Create a metadata file to store display name
         metadata = {
             'name': profile_name,
             'display_name': display_name,
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
         }
 
-        metadata_file = f'{profile_dir}/.profile_metadata.json'
+        metadata_file = os.path.join(profile_dir, '.profile_metadata.json')
         with open(metadata_file, 'w') as f:
             json.dump(metadata, f, indent=2)
         os.chown(metadata_file, puid, pgid)
 
+        logger.info("Profile '%s' created (display: '%s')", profile_name, display_name)
         return jsonify({
             'status': 'created',
             'profile_name': profile_name,
             'display_name': display_name,
             'profile_dir': profile_dir,
             'photos_dir': photos_dir,
-            'message': f'Profile "{display_name}" created as {profile_name}'
+            'message': f'Profile "{display_name}" created as {profile_name}',
         })
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except OSError as exc:
+        logger.error("Failed to create profile '%s': %s", profile_name, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @profiles_bp.route('/api/delete-profile/<profile_name>', methods=['DELETE'])
+@validate_profile_name
 def delete_profile(profile_name):
-    """Delete a profile: stop and remove container, delete docker-compose file"""
-    container_name = f'{get_container_prefix()}-{profile_name}'
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
+    """Delete a profile: stop and remove container, delete docker-compose file."""
+    prefix = get_container_prefix()
+    container_name = f'{prefix}-{profile_name}'
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
 
     errors = []
     success_messages = []
 
     try:
-        # Step 1: Check if container exists and remove it
+        # Step 1: Remove container
         try:
             container = docker_client.containers.get(container_name)
-            # Always try to stop the container first, regardless of status
             try:
                 container.stop(timeout=10)
                 success_messages.append(f'Container {container_name} stopped')
-            except Exception as stop_error:
-                # Container might already be stopped, continue anyway
-                success_messages.append(f'Container stop attempted (may already be stopped)')
-            # Remove container (force=True to ensure removal even if stop failed)
+            except docker.errors.APIError:
+                success_messages.append('Container stop attempted (may already be stopped)')
             container.remove(force=True)
             success_messages.append(f'Container {container_name} removed')
         except docker.errors.NotFound:
             success_messages.append(f'Container {container_name} not found (already deleted)')
-        except Exception as e:
-            errors.append(f'Error removing container: {str(e)}')
+        except docker.errors.APIError as exc:
+            errors.append(f'Error removing container: {str(exc)}')
 
-        # Step 2: Delete docker-compose file if it exists
+        # Step 2: Delete compose file
         if os.path.exists(compose_file):
             try:
                 os.remove(compose_file)
                 success_messages.append(f'File docker-compose.{profile_name}.yml deleted')
-            except Exception as e:
-                errors.append(f'Error deleting compose file: {str(e)}')
+            except OSError as exc:
+                errors.append(f'Error deleting compose file: {str(exc)}')
         else:
-            success_messages.append(f'Compose file not found (already deleted)')
+            success_messages.append('Compose file not found (already deleted)')
 
-        # Return response
         if errors:
             return jsonify({
                 'status': 'partial',
                 'message': 'Profile partially deleted with some errors',
                 'success': success_messages,
-                'errors': errors
-            }), 207  # Multi-Status
+                'errors': errors,
+            }), 207
         else:
+            logger.info("Profile '%s' deleted", profile_name)
             return jsonify({
                 'status': 'deleted',
                 'message': f'Profile {profile_name} deleted successfully',
-                'success': success_messages
+                'success': success_messages,
             })
 
-    except Exception as e:
+    except docker.errors.APIError as exc:
+        logger.error("Error deleting profile '%s': %s", profile_name, exc)
         return jsonify({
             'status': 'error',
-            'error': str(e),
+            'error': str(exc),
             'success': success_messages,
-            'errors': errors
+            'errors': errors,
         }), 500
 
 
 @profiles_bp.route('/api/delete-profile-files/<profile_name>', methods=['DELETE'])
+@validate_profile_name
 def delete_profile_files(profile_name):
-    """Delete only profile files (docker-compose, metadata, profile directory) without touching containers"""
-    compose_file = f'/workspace/docker-compose.{profile_name}.yml'
-    profile_dir = f'/workspace/profiles/{profile_name}'
+    """Delete only profile files without touching containers."""
+    compose_file = os.path.join(config.WORKSPACE_PATH, f'docker-compose.{profile_name}.yml')
+    profile_dir = os.path.join(config.PROFILES_DIR, profile_name)
 
     errors = []
     success_messages = []
 
     try:
-        # Step 1: Delete docker-compose file if it exists
         if os.path.exists(compose_file):
             try:
                 os.remove(compose_file)
                 success_messages.append(f'File docker-compose.{profile_name}.yml deleted')
-            except Exception as e:
-                errors.append(f'Error deleting compose file: {str(e)}')
+            except OSError as exc:
+                errors.append(f'Error deleting compose file: {str(exc)}')
         else:
-            success_messages.append(f'Compose file not found')
+            success_messages.append('Compose file not found')
 
-        # Step 2: Delete profile directory if it exists
         if os.path.exists(profile_dir):
             try:
                 shutil.rmtree(profile_dir)
                 success_messages.append(f'Profile directory {profile_name} deleted')
-            except Exception as e:
-                errors.append(f'Error deleting profile directory: {str(e)}')
+            except OSError as exc:
+                errors.append(f'Error deleting profile directory: {str(exc)}')
         else:
-            success_messages.append(f'Profile directory not found')
+            success_messages.append('Profile directory not found')
 
-        # Return response
         if errors:
             return jsonify({
                 'status': 'partial',
                 'message': 'Profile files partially deleted with some errors',
                 'success': success_messages,
-                'errors': errors
-            }), 207  # Multi-Status
+                'errors': errors,
+            }), 207
         else:
+            logger.info("Profile files for '%s' deleted", profile_name)
             return jsonify({
                 'status': 'deleted',
                 'message': f'Profile {profile_name} files deleted successfully',
-                'success': success_messages
+                'success': success_messages,
             })
 
-    except Exception as e:
+    except OSError as exc:
+        logger.error("Error deleting profile files for '%s': %s", profile_name, exc)
         return jsonify({
             'status': 'error',
-            'error': str(e),
+            'error': str(exc),
             'success': success_messages,
-            'errors': errors
+            'errors': errors,
         }), 500
 
 
 @profiles_bp.route('/api/browse-directories', methods=['POST'])
 def browse_directories():
-    """Browse directories on the host system"""
+    """Browse directories on the host system."""
     data = request.get_json() or {}
     requested_path = data.get('path', '/')
 
     try:
-        # Map the requested path to the host mount point
-        # The host filesystem is mounted at /host in the container
         if requested_path.startswith('/host'):
-            # Already using host prefix
             container_path = requested_path
         else:
-            # Convert user path to container path
-            # User sees: /home/user/photos
-            # Container needs: /host/home/user/photos
             container_path = os.path.join('/host', requested_path.lstrip('/'))
 
-        # Resolve to absolute path
         container_path = os.path.abspath(container_path)
 
-        # Security check: ensure path exists and is a directory
         if not os.path.exists(container_path):
             return jsonify({'error': 'Path does not exist'}), 404
 
         if not os.path.isdir(container_path):
             return jsonify({'error': 'Path is not a directory'}), 400
 
-        # List directories
         directories = []
         files_count = 0
 
@@ -612,43 +546,37 @@ def browse_directories():
                 entry_container_path = os.path.join(container_path, entry)
                 try:
                     if os.path.isdir(entry_container_path):
-                        # Check if readable
                         os.listdir(entry_container_path)
-
-                        # Convert back to user-facing path (remove /host prefix)
                         entry_user_path = entry_container_path.replace('/host', '', 1) or '/'
-
                         directories.append({
                             'name': entry,
-                            'path': entry_user_path
+                            'path': entry_user_path,
                         })
                     else:
                         files_count += 1
                 except PermissionError:
-                    # Skip directories we can't read
                     entry_user_path = entry_container_path.replace('/host', '', 1) or '/'
                     directories.append({
                         'name': entry,
                         'path': entry_user_path,
-                        'unreadable': True
+                        'unreadable': True,
                     })
         except PermissionError:
             return jsonify({'error': 'Permission denied'}), 403
 
-        # Get parent directory
         parent_container_path = os.path.dirname(container_path)
         parent_user_path = parent_container_path.replace('/host', '', 1) or '/'
         parent_path = parent_user_path if parent_user_path != container_path.replace('/host', '', 1) else None
 
-        # Convert current path back to user-facing format
         current_user_path = container_path.replace('/host', '', 1) or '/'
 
         return jsonify({
             'current_path': current_user_path,
             'parent_path': parent_path,
             'directories': directories,
-            'files_count': files_count
+            'files_count': files_count,
         })
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except OSError as exc:
+        logger.error("Error browsing directory '%s': %s", requested_path, exc)
+        return jsonify({'error': str(exc)}), 500

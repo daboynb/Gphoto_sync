@@ -1,3 +1,8 @@
 /photos
 /profiles
 docker-compose.*.yml
+CLAUDE.md
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

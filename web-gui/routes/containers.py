@@ -1,138 +1,138 @@
 #!/usr/bin/env python3
+import logging
 from datetime import datetime
-from flask import Blueprint, jsonify, Response, stream_with_context
+
+import docker
+from flask import Blueprint, Response, jsonify, stream_with_context
+
+from utils.container_helpers import get_container_info, get_sync_containers
 from utils.docker_client import docker_client
-from utils.container_helpers import get_sync_containers, get_container_info
+from utils.validators import validate_container_id
+
+logger = logging.getLogger(__name__)
 
 containers_bp = Blueprint('containers', __name__)
 
 
+def _parse_container_start_time(container):
+    """Parse the container start time into a Unix timestamp."""
+    started_at_str = container.attrs['State']['StartedAt']
+    try:
+        started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        started_at = datetime.strptime(started_at_str.split('.')[0], '%Y-%m-%dT%H:%M:%S')
+    return int(started_at.timestamp())
+
+
 @containers_bp.route('/api/containers')
 def api_containers():
-    """Get all container info"""
+    """Get all container info."""
     containers = get_sync_containers()
     return jsonify([get_container_info(c) for c in containers])
 
 
 @containers_bp.route('/api/container/<container_id>/logs')
+@validate_container_id
 def api_logs(container_id):
-    """Get container logs (only from last boot)"""
+    """Get container logs (only from last boot)."""
     try:
         container = docker_client.containers.get(container_id)
-
-        # Get container start time as ISO string
-        started_at_str = container.attrs['State']['StartedAt']
-
-        # Convert ISO string to datetime object
-        # Handle both formats: with and without microseconds
-        try:
-            # Try parsing with microseconds (e.g., "2024-01-15T10:30:45.123456789Z")
-            started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
-        except:
-            # Fallback: parse without microseconds
-            started_at = datetime.strptime(started_at_str.split('.')[0], '%Y-%m-%dT%H:%M:%S')
-
-        # Convert to Unix timestamp (integer)
-        since_timestamp = int(started_at.timestamp())
-
-        # Get logs only since container started (last boot only)
+        since_timestamp = _parse_container_start_time(container)
         logs = container.logs(since=since_timestamp, timestamps=True).decode('utf-8')
         return jsonify({'logs': logs})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except docker.errors.NotFound:
+        return jsonify({'error': f'Container {container_id} not found'}), 404
+    except docker.errors.APIError as exc:
+        logger.error("Error getting logs for %s: %s", container_id, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @containers_bp.route('/api/container/<container_id>/logs/stream')
+@validate_container_id
 def stream_logs(container_id):
-    """Stream container logs in real-time (only from last boot)"""
+    """Stream container logs in real-time (only from last boot)."""
     def generate():
         try:
             container = docker_client.containers.get(container_id)
 
-            # Check if container is running
-            container.reload()  # Refresh container state
+            container.reload()
             if container.status != 'running':
-                # Send a close event to the client
                 yield f"event: close\ndata: Container stopped\n\n"
                 return
 
-            # Get container start time as ISO string
-            started_at_str = container.attrs['State']['StartedAt']
+            since_timestamp = _parse_container_start_time(container)
 
-            # Convert ISO string to datetime object
-            try:
-                # Try parsing with microseconds (e.g., "2024-01-15T10:30:45.123456789Z")
-                started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
-            except:
-                # Fallback: parse without microseconds
-                started_at = datetime.strptime(started_at_str.split('.')[0], '%Y-%m-%dT%H:%M:%S')
-
-            # Convert to Unix timestamp (integer)
-            since_timestamp = int(started_at.timestamp())
-
-            # Stream logs only since container started (last boot only)
             try:
                 for log in container.logs(stream=True, follow=True, timestamps=True, since=since_timestamp):
                     yield f"data: {log.decode('utf-8')}\n\n"
 
-                    # Periodically check if container is still running
-                    # Note: This will only trigger when new log lines arrive
                     try:
                         container.reload()
                         if container.status != 'running':
-                            # Container stopped, send close event
                             yield f"event: close\ndata: Container stopped\n\n"
                             break
-                    except:
-                        # Container might have been removed
+                    except docker.errors.APIError:
                         yield f"event: close\ndata: Container stopped or removed\n\n"
                         break
-            except Exception as stream_error:
-                # Stream was interrupted (likely because container stopped)
+            except docker.errors.APIError:
                 yield f"event: close\ndata: Stream ended\n\n"
 
-        except Exception as e:
-            yield f"event: error\ndata: {str(e)}\n\n"
+        except docker.errors.NotFound:
+            yield f"event: error\ndata: Container not found\n\n"
+        except docker.errors.APIError as exc:
+            yield f"event: error\ndata: {str(exc)}\n\n"
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
 @containers_bp.route('/api/container/<container_id>/start', methods=['POST'])
+@validate_container_id
 def start_container(container_id):
-    """Start a container"""
+    """Start a container."""
     try:
         container = docker_client.containers.get(container_id)
         container.start()
         return jsonify({'status': 'started'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except docker.errors.NotFound:
+        return jsonify({'error': f'Container {container_id} not found'}), 404
+    except docker.errors.APIError as exc:
+        logger.error("Error starting container %s: %s", container_id, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @containers_bp.route('/api/container/<container_id>/stop', methods=['POST'])
+@validate_container_id
 def stop_container(container_id):
-    """Stop a container"""
+    """Stop a container."""
     try:
         container = docker_client.containers.get(container_id)
         container.stop()
         return jsonify({'status': 'stopped'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except docker.errors.NotFound:
+        return jsonify({'error': f'Container {container_id} not found'}), 404
+    except docker.errors.APIError as exc:
+        logger.error("Error stopping container %s: %s", container_id, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @containers_bp.route('/api/container/<container_id>/restart', methods=['POST'])
+@validate_container_id
 def restart_container(container_id):
-    """Restart a container"""
+    """Restart a container."""
     try:
         container = docker_client.containers.get(container_id)
         container.restart()
         return jsonify({'status': 'restarted'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except docker.errors.NotFound:
+        return jsonify({'error': f'Container {container_id} not found'}), 404
+    except docker.errors.APIError as exc:
+        logger.error("Error restarting container %s: %s", container_id, exc)
+        return jsonify({'error': str(exc)}), 500
 
 
 @containers_bp.route('/api/stats')
 def api_stats():
-    """Get overall stats"""
+    """Get overall stats."""
     containers = get_sync_containers()
     total = len(containers)
     running = sum(1 for c in containers if c.status == 'running')
@@ -141,5 +141,5 @@ def api_stats():
     return jsonify({
         'total': total,
         'running': running,
-        'stopped': stopped
+        'stopped': stopped,
     })
